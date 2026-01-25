@@ -34,13 +34,13 @@ from threat_analysis.generation.diagram_generator import DiagramGenerator
 from threat_analysis.generation.attack_navigator_generator import AttackNavigatorGenerator
 from threat_analysis.generation.attack_flow_generator import AttackFlowGenerator
 from threat_analysis.core.model_factory import create_threat_model
-from threat_analysis import config
 from threat_analysis.iac_plugins import IaCPlugin
 from threat_analysis.generation.report_generator import ReportGenerator
 from threat_analysis.utils import _validate_path_within_project, resolve_path
-from threat_analysis.server.server import run_gui
+from threat_analysis.server.server import run_server
 from threat_analysis.core.model_validator import ModelValidator
 from threat_analysis.core.cve_service import CVEService
+from threat_analysis import config
 
 
 # Add project root to sys.path
@@ -95,7 +95,7 @@ class SecOpsTMFramework:
             sys.exit(1)  # Exit if model loading fails
 
         self.severity_calculator = SeverityCalculator(
-            markdown_file_path=config.DEFAULT_MODEL_FILEPATH # Keep this for now, will adjust later if needed
+            markdown_file_path=Path("threatModel_Template/threat_model.md") # Hardcoded path instead of config
         )
         self.report_generator = ReportGenerator(
             self.severity_calculator, self.mitre_mapper, # Use the mitre_mapper from the threat_model
@@ -350,12 +350,21 @@ class CustomArgumentParser:
         self.parser.add_argument(
             "--model-file",
             type=str,
-            default=config.DEFAULT_MODEL_FILEPATH,
+            default="threatModel_Template/threat_model.md",
             help="Path to the threat model Markdown file.",
         )
         self.parser.add_argument(
-            "--gui", action="store_true", help="Launch the web-based GUI editor."
+            "--server", action="store_true", help="Launch the unified web server with menu."
         )
+        self.parser.add_argument(
+            "--log-level",
+            type=str,
+            default=None,
+            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+            help="Set the logging level (e.g., DEBUG, INFO, WARNING). Overrides the config file setting.",
+        )
+
+
         self.parser.add_argument(
             "--project",
             type=str,
@@ -431,9 +440,17 @@ def run_single_analysis(args: argparse.Namespace, loaded_iac_plugins: Dict[str, 
 
     if not iac_plugin_used:
         # If no IaC plugin was used, read from the specified model file
-        base_model_filepath = _validate_path_within_project(args.model_file)
-        with open(base_model_filepath, "r", encoding="utf-8") as f:
+        original_model_path = _validate_path_within_project(args.model_file)
+        with open(original_model_path, "r", encoding="utf-8") as f:
             markdown_content_for_analysis = f.read()
+        
+        # Ensure the output directory exists
+        os.makedirs(config.OUTPUT_BASE_DIR, exist_ok=True)
+        # Copy/Save the model file to the output directory
+        base_model_filepath = config.OUTPUT_BASE_DIR / original_model_path.name
+        with open(base_model_filepath, "w", encoding="utf-8") as f:
+            f.write(markdown_content_for_analysis)
+        logging.info(f"Model file saved to output directory: {base_model_filepath}")
     else:
         # Ensure the output directory exists before writing
         os.makedirs(config.OUTPUT_BASE_DIR, exist_ok=True)
@@ -473,8 +490,8 @@ def run_single_analysis(args: argparse.Namespace, loaded_iac_plugins: Dict[str, 
 
     framework = SecOpsTMFramework(
         markdown_content=markdown_content_for_analysis,
-        model_name=config.DEFAULT_MODEL_NAME,
-        model_description=config.DEFAULT_MODEL_DESCRIPTION,
+        model_name="Enhanced DMZ Security Analysis",
+        model_description="Advanced DMZ architecture with 8 external flows and command zone",
         model_file_path=str(base_model_filepath),
         implemented_mitigations_path=str(implemented_mitigations_path),
         cve_service=cve_service
@@ -494,6 +511,13 @@ def run_single_analysis(args: argparse.Namespace, loaded_iac_plugins: Dict[str, 
     reports = framework.generate_reports()
     framework.generate_stix_report()
     diagrams = framework.generate_diagrams()
+
+    # Generate metadata for graphical editor
+    framework.diagram_generator.generate_metadata(
+        threat_model=framework.threat_model,
+        markdown_content=framework.markdown_content,
+        output_path=str(base_model_filepath)
+    )
 
     if args.navigator:
         framework.generate_navigator_layer()
@@ -524,40 +548,43 @@ class ColoredFormatter(logging.Formatter):
 
 # --- Main entry point ---
 if __name__ == "__main__":
-    # Create a logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO) # Set default level
-
-    # Remove all existing handlers from the root logger
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-
-    # Create a console handler
-    console_handler = logging.StreamHandler()
-
-    # Create and set the custom formatter
-    formatter = ColoredFormatter("%(asctime)s - %(levelname)s - %(message)s")
-    console_handler.setFormatter(formatter)
-
-    # Add the handler to the logger
-    logger.addHandler(console_handler)
-
-    # Prevent basicConfig from adding another handler if it's called elsewhere
-    logger.propagate = False
-
+    # --- Argument Parsing ---
     loaded_iac_plugins = load_iac_plugins()
     custom_parser = CustomArgumentParser(loaded_iac_plugins)
     args, remaining_argv = custom_parser.parse_args()
 
+    # --- Logger Configuration ---
+    logger = logging.getLogger()
+    
+    # Determine log level
+    log_level_str = args.log_level if args.log_level else config.LOG_LEVEL
+    numeric_level = getattr(logging, log_level_str.upper(), None)
+    if not isinstance(numeric_level, int):
+        logging.warning(f"Invalid log level: {log_level_str}. Defaulting to INFO.")
+        numeric_level = logging.INFO
+        
+    logger.setLevel(numeric_level)
+
+    # Remove all existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # Create and configure console handler
+    console_handler = logging.StreamHandler()
+    formatter = ColoredFormatter("%(asctime)s - %(levelname)s - %(message)s")
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    logger.propagate = False
+
     # Reconstruct sys.argv for PyTM
     sys.argv = [sys.argv[0]] + remaining_argv
 
-    if args.gui:
+    if args.server: # Use the new --server argument
         try:
-            run_gui(args.model_file)
+            run_server(args.model_file)
         except ImportError:
             logging.error(
-                "❌ Flask is not installed. Please install it to use the GUI: "
+                "❌ Flask is not installed. Please install it to use the web server: "
                 "pip install Flask"
             )
             sys.exit(1)

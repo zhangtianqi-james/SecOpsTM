@@ -83,7 +83,7 @@ This section provides a comprehensive breakdown of each component of the SecOpsT
 The execution of the framework begins in `__main__.py`. This script is responsible for:
 -   **Argument Parsing**: It uses a `CustomArgumentParser` to handle command-line arguments. This includes standard arguments like `--model-file`, `--gui`, `--project`, and `--navigator`, but it also dynamically loads IaC plugins from the `iac_plugins` directory and adds corresponding arguments for them (e.g., `--ansible-path`).
 -   **Mode Selection**: It determines the execution mode based on the arguments:
-    -   `--gui`: Launches the Flask web server via `server.run_gui()`.
+    -   `--server`: Launches the unified Flask web server, which provides a menu to select between the simple viewer and the full graphical editor.
     -   `--project`: Initiates a hierarchical project analysis via `report_generator.generate_project_reports()`.
     -   `--<iac-plugin>-path`: Triggers the IaC import workflow.
     -   Default: Proceeds with a standard single-file analysis.
@@ -317,9 +317,16 @@ The `SeverityCalculator` provides a nuanced risk score for each threat.
 
 -   **`diagram_generator.py`**: This module is responsible for all visual representations.
     -   It uses a Jinja2 template (`threat_model.dot.j2`) to generate Graphviz DOT language code from the `ThreatModel` object.
-    -   **Visual Styling**: The generator includes logic for rich visual styling:
-        -   It automatically assigns shapes based on keywords in element names (e.g., `cylinder` for "database", `hexagon` for "firewall").
-        -   It adds icons (e.g., 👤 for actors, 🖥️ for servers, 🔥 for firewalls) to node labels for better readability.
+    -   **Visual Styling**: The generator includes sophisticated logic for rich visual styling, combining native Graphviz shapes with embedded SVG icons. The layout of the icon and text is adjusted based on the element type for maximum clarity:
+        -   **Native Shapes & Sizing**: It assigns semantic shapes to elements and sets their sizes for a clean visual hierarchy:
+            -   **Actors**: Rendered as fixed-size **circles**.
+            -   **Switches and Firewalls**: Rendered as fixed-size diamonds and hexagons, respectively, which are smaller than other nodes for visual distinction.
+            -   **Servers (generic, web, API)**: Rendered as **rectangles** with a minimum width and height to enforce a consistent aspect ratio.
+            -   **Databases**: Rendered as cylinders.
+        -   **Conditional Icon & Text Layout**: The placement of the icon and text label is conditional:
+            -   For **generic servers**, the icon and centered text are rendered **side-by-side** on the same line, providing a compact view.
+            -   For **all other elements** (actors, firewalls, web servers, etc.), the icon is rendered **above** the text, creating a top-down layout.
+        -   **Icon Implementation**: This is achieved using Graphviz's HTML-like labels, which embed scaled SVG icons (e.g., 30x30 points) inside the node's shape. If an SVG icon is not found, the system falls back to a text-based Unicode character icon. Element types are mapped to specific SVG icons using the `ICON_MAPPING` dictionary in `threat_analysis/config_generator.py`. This mapping supports elements like `actor`, `web_server`, `database`, `firewall`, `router`, `switch`, `server`, `api_gateway`, `app_server`, `central_server`, `authentication_server`, and `load_balancer`. If an element's type is not found in this mapping, a default emoji is used.
     -   It calls the `dot` command-line tool to render the DOT code into SVG, PNG, or other formats.
     -   **Navigable Diagrams**: For hierarchical projects, it makes diagrams navigable by post-processing the SVG. The `add_links_to_svg` function uses Python's `xml.etree.ElementTree` to find SVG nodes corresponding to elements with a `submodel` property and wraps them in an `<a>` hyperlink tag pointing to the sub-model's diagram.
 -   **`report_generator.py`**: Creates the primary user-facing artifacts.
@@ -364,6 +371,7 @@ graph TD
 
 -   **`server.py`**: A simple Flask application that defines the API endpoints:
     -   `/`: Serves the main `web_interface.html`.
+    -   `/fullGUI`: Serves the `full_gui.html` with a more comprehensive interface.
     -   `/api/update`: Receives Markdown from the editor, triggers a live analysis, and returns the resulting SVG diagram and legend.
     -   `/api/export` & `/api/export_all`: Handle requests to download the generated artifacts.
 -   **`threat_model_service.py`**: This service layer acts as a bridge between the web server and the core analysis engine. It encapsulates the logic for handling web requests, calling the appropriate framework components, and managing temporary files, keeping the Flask app clean and focused on routing. It has been updated to align with the new `create_threat_model` signature, removing the `mitre_mapping` argument from its calls.

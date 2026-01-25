@@ -142,71 +142,131 @@ def test_get_edge_attributes_for_protocol(diagram_generator):
     attributes = diagram_generator._get_edge_attributes_for_protocol(mock_threat_model, "HTTP")
     assert "fontsize" not in attributes
 
-def test_get_node_attributes_actor(diagram_generator):
-    actor_dict = {'name': 'User', 'color': 'red', 'is_filled': True}
-    attrs = diagram_generator._get_node_attributes(actor_dict, 'actor')
-    assert 'shape=oval' in attrs
-    assert 'fillcolor="red"' in attrs
-    assert 'label="👤 User"' in attrs
-    assert 'style=filled' in attrs
+def test_get_node_attributes_actor_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        actor_dict = {'name': 'User', 'color': 'red', 'is_filled': True, 'type': 'actor'}
+        attrs = diagram_generator._get_node_attributes(actor_dict, 'actor')
+        assert 'shape=circle' in attrs
+        assert 'fillcolor="red"' in attrs
+        assert 'label=<👤 <br/>User>' in attrs
+        assert 'style=filled' in attrs
+        assert 'image=' not in attrs
 
+def test_get_node_attributes_actor_with_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=True):
+        actor_dict = {'name': 'User', 'color': 'red', 'is_filled': True, 'type': 'actor'}
+        attrs = diagram_generator._get_node_attributes(actor_dict, 'actor')
+        assert 'shape=circle' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'User' in attrs
+        assert '<IMG SRC=' in attrs
 
+def test_get_node_attributes_firewall_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        firewall_dict = {'name': 'External Firewall', 'type': 'firewall'}
+        attrs = diagram_generator._get_node_attributes(firewall_dict, 'server')
+        assert 'shape=hexagon' in attrs
+        assert 'label=<🔥 <br/>External Firewall>' in attrs
 
-def test_get_node_attributes_firewall(diagram_generator):
-    firewall_dict = {'name': 'External Firewall', 'type': 'firewall'}
-    attrs = diagram_generator._get_node_attributes(firewall_dict, 'server')
-    assert 'shape=hexagon' in attrs
-    assert 'fillcolor="red"' in attrs
-    assert 'label="🔥 External Firewall"' in attrs
+def test_get_node_attributes_firewall_with_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=True):
+        firewall_dict = {'name': 'External Firewall', 'type': 'firewall'}
+        attrs = diagram_generator._get_node_attributes(firewall_dict, 'server')
+        assert 'shape=hexagon' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'External Firewall' in attrs
+        assert '<IMG SRC=' in attrs
 
-def test_get_node_attributes_database(diagram_generator):
-    db_dict = {'name': 'App Database', 'type': 'database'}
-    attrs = diagram_generator._get_node_attributes(db_dict, 'server')
-    assert 'shape=cylinder' in attrs
-    assert 'fillcolor="lightblue"' in attrs
-    assert 'label="🗄️ App Database"' in attrs
+def test_get_node_attributes_database_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        db_dict = {'name': 'App Database', 'type': 'database'}
+        attrs = diagram_generator._get_node_attributes(db_dict, 'server')
+        assert 'shape=cylinder' in attrs
+        assert 'label=<🗄️ <br/>App Database>' in attrs
 
-def test_get_node_attributes_web_server(diagram_generator):
-    web_server_dict = {'name': 'Web Server', 'type': 'web_server'}
-    attrs = diagram_generator._get_node_attributes(web_server_dict, 'server')
-    assert 'shape=box' in attrs
-    assert 'style=filled' in attrs
-    assert 'fillcolor=lightgreen' in attrs
-    assert 'label="🌐 Web Server"' in attrs
+def test_get_node_attributes_database_with_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=True):
+        db_dict = {'name': 'App Database', 'type': 'database'}
+        attrs = diagram_generator._get_node_attributes(db_dict, 'server')
+        assert 'shape=cylinder' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'App Database' in attrs
+        assert '<IMG SRC=' in attrs
 
-def test_get_node_attributes_api(diagram_generator):
-    api_dict = {'name': 'Payment API', 'type': 'api_gateway'}
-    attrs = diagram_generator._get_node_attributes(api_dict, 'server')
-    assert 'shape=box' in attrs
-    assert 'style=filled' in attrs
-    assert 'fillcolor=lightyellow' in attrs
-    assert 'label="🔌 Payment API"' in attrs
+def test_get_node_attributes_web_server_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        web_server_dict = {'name': 'Web Server', 'type': 'web_server'}
+        attrs = diagram_generator._get_node_attributes(web_server_dict, 'server')
+        assert 'shape=box' in attrs
+        assert 'label=<🖥️ <br/>Web Server>' in attrs
+
+def test_get_node_attributes_web_server_with_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=True):
+        web_server_dict = {'name': 'Web Server', 'type': 'web_server'}
+        attrs = diagram_generator._get_node_attributes(web_server_dict, 'server')
+        assert 'shape=box' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'Web Server' in attrs
+        assert '<IMG SRC=' in attrs
+
+def test_get_node_attributes_api_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        api_dict = {'name': 'Payment API', 'type': 'api_gateway'}
+        attrs = diagram_generator._get_node_attributes(api_dict, 'server')
+        assert 'shape=box' in attrs
+        assert 'label=<🖥️ <br/>Payment API>' in attrs
+
+def test_get_node_attributes_api_with_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=True):
+        api_dict = {'name': 'Payment API', 'type': 'api_gateway'}
+        attrs = diagram_generator._get_node_attributes(api_dict, 'server')
+        assert 'shape=box' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'Payment API' in attrs
+        assert '<IMG SRC=' in attrs
 
 def test_get_node_attributes_default(diagram_generator):
-    default_dict = {'name': 'Generic Node'}
-    attrs = diagram_generator._get_node_attributes(default_dict, 'unknown')
-    assert 'shape=box' in attrs
-    assert 'fillcolor="lightblue"' in attrs
-    assert 'label="Generic Node"' in attrs
+    with patch('pathlib.Path.exists', return_value=False):
+        default_dict = {'name': 'Generic Node'}
+        attrs = diagram_generator._get_node_attributes(default_dict, 'unknown')
+        assert 'shape=box' in attrs
+        assert 'label="Generic Node"' in attrs
 
+def test_get_node_attributes_string_format_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        attrs = diagram_generator._get_node_attributes("MyStringNode", 'actor')
+        assert 'shape=circle' in attrs
+        assert 'label=<👤 <br/>MyStringNode>' in attrs
 
+def test_get_node_attributes_string_format_with_image(diagram_generator):
+    # This case is less likely as a string can't have a 'type' to find an icon,
+    # but we test for completeness. The 'actor' node_type gives it a fallback icon path.
+    with patch('pathlib.Path.exists', return_value=True):
+        attrs = diagram_generator._get_node_attributes("MyStringNode", 'actor')
+        assert 'shape=circle' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'MyStringNode' in attrs
+        assert '<IMG SRC=' in attrs
 
-def test_get_node_attributes_string_format(diagram_generator):
-    attrs = diagram_generator._get_node_attributes("MyStringNode", 'actor')
-    assert 'shape=oval' in attrs
-    assert 'fillcolor="yellow"' in attrs
-    assert 'label="👤 MyStringNode"' in attrs
-    assert 'style=filled' in attrs
+def test_get_node_attributes_dict_with_object_no_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=False):
+        mock_pytm_obj = MagicMock()
+        mock_pytm_obj.name = "PyTM Object Name"
+        element_dict = {'object': mock_pytm_obj, 'color': 'orange', 'is_filled': True}
+        attrs = diagram_generator._get_node_attributes(element_dict, 'server')
+        assert 'shape=box' in attrs
+        assert 'label=<🖥️ <br/>PyTM Object Name>' in attrs
 
-def test_get_node_attributes_dict_with_object(diagram_generator):
-    mock_pytm_obj = MagicMock()
-    mock_pytm_obj.name = "PyTM Object Name"
-    element_dict = {'object': mock_pytm_obj, 'color': 'orange', 'is_filled': True}
-    attrs = diagram_generator._get_node_attributes(element_dict, 'server')
-    assert 'shape=box' in attrs
-    assert 'fillcolor="orange"' in attrs
-    assert 'label="🖥️ PyTM Object Name"' in attrs
-    assert 'style=filled' in attrs
+def test_get_node_attributes_dict_with_object_with_image(diagram_generator):
+    with patch('pathlib.Path.exists', return_value=True):
+        mock_pytm_obj = MagicMock()
+        mock_pytm_obj.name = "PyTM Object Name"
+        element_dict = {'object': mock_pytm_obj, 'color': 'orange', 'is_filled': True, 'type': 'server'}
+        attrs = diagram_generator._get_node_attributes(element_dict, 'server')
+        assert 'shape=box' in attrs
+        assert 'label=<<TABLE' in attrs
+        assert 'PyTM Object Name' in attrs
+        assert '<IMG SRC=' in attrs
 
 def test_get_protocol_styles_from_model_get_all_protocol_styles(diagram_generator):
     mock_threat_model = MagicMock()
@@ -321,20 +381,15 @@ def test_generate_dot_file_from_model_returns_content(diagram_generator):
             assert result == dot_content
 
 def test_generate_diagram_from_dot_success(diagram_generator):
-    with patch('subprocess.run') as mock_run, \
-         patch.object(diagram_generator, 'check_graphviz_installation', return_value=True):
-        mock_run.return_value = MagicMock(returncode=0)
-        # We need to mock pathlib.Path's exists method
-        with patch('threat_analysis.generation.diagram_generator.Path') as mock_path_class:
-            mock_path_instance = mock_path_class.return_value
-            # Since we now create the output dir, the mock needs to handle the with_suffix call
-            mock_path_with_suffix = mock_path_instance.with_suffix.return_value
-            mock_path_with_suffix.exists.return_value = True
-
+    with patch.object(diagram_generator, 'check_graphviz_installation', return_value=True):
+        # Mock the SVG generator's generate_svg_from_dot method
+        with patch('threat_analysis.generation.svg_generator.CustomSVGGenerator.generate_svg_from_dot') as mock_svg_gen:
+            mock_svg_gen.return_value = "output.svg"
+            
             result = diagram_generator.generate_diagram_from_dot("digraph G {}", "output.svg", "svg")
-            mock_run.assert_called_once()
+            mock_svg_gen.assert_called_once()
             # The result should be the path to the output file
-            assert result == str(mock_path_with_suffix)
+            assert result == "output.svg"
 
 def test_generate_diagram_from_dot_unsupported_format(diagram_generator):
     result = diagram_generator.generate_diagram_from_dot("digraph G {}", "output", "unsupported")

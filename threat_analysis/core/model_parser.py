@@ -128,8 +128,10 @@ class ModelParser:
             name = match.group(1).strip()
             params_str = match.group(2).strip()
             boundary_kwargs = self._parse_key_value_params(params_str)
+            logging.debug(f"Parsed boundary kwargs for '{name}': {boundary_kwargs}")
             if 'color' not in boundary_kwargs:
                 boundary_kwargs['color'] = 'lightgray'
+                logging.debug(f"Color not found for '{name}', defaulting to lightgray.")
             parent_obj = None
             while boundary_stack and boundary_stack[-1][1] >= indentation:
                 boundary_stack.pop()
@@ -173,6 +175,7 @@ class ModelParser:
         Parses a key=value parameter string and returns a dictionary.
         Handles quoted strings, booleans, numbers, hex colors, and unquoted strings.
         """
+        logging.debug(f"Parsing params: '{params_str}'")
         params = {}
         # This regex matches key=value pairs, where value can be quoted or unquoted (including hex colors)
         param_pattern = re.compile(
@@ -203,6 +206,8 @@ class ModelParser:
             else:
                 continue
 
+            logging.debug(f"Found match: key='{key}', quoted='{value_quoted}', unquoted='{value_unquoted}' -> final_value='{value}'")
+
             # Normalize keys to handle case variations
             if key.lower() == 'istrusted':
                 key = 'isTrusted'
@@ -210,6 +215,7 @@ class ModelParser:
                 key = 'isFilled'
 
             params[key] = value
+        logging.debug(f"Parsed params: {params}")
         return params
 
     def _parse_data(self, line: str):
@@ -263,15 +269,11 @@ class ModelParser:
         params_str = name_match.group(2).strip()
         params = self._parse_key_value_params(params_str)
 
-        from_name_raw = params.get("from")
-        to_name_raw = params.get("to")
-        protocol = params.get("protocol")
-        data_name = params.get("data")
-        is_authenticated = params.get("is_authenticated", False)
-        is_encrypted = params.get("is_encrypted", False)
+        from_name_raw = params.pop("from", None)
+        to_name_raw = params.pop("to", None)
 
-        if not all([from_name_raw, to_name_raw, protocol]):
-            logging.warning(f"⚠️ Warning: Dataflow '{name}' is missing mandatory parameters (from, to, protocol).")
+        if not all([from_name_raw, to_name_raw]):
+            logging.warning(f"⚠️ Warning: Dataflow '{name}' is missing mandatory parameters (from, to).")
             return
 
         def find_element(name_raw: str):
@@ -292,13 +294,9 @@ class ModelParser:
         to_elem = find_element(to_name_raw)
 
         if from_elem and to_elem:
-            self.threat_model.add_dataflow(
-                from_elem, to_elem, name, protocol,
-                data_name=data_name.lower() if data_name else None,
-                is_authenticated=is_authenticated,
-                is_encrypted=is_encrypted
-            )
-            logging.info(f"   - Added Dataflow: {name} ({from_name_raw} -> {to_name_raw}, Proto: {protocol}, Data: {data_name})")
+            # Pass the remaining params as kwargs
+            self.threat_model.add_dataflow(from_elem, to_elem, name, **params)
+            logging.info(f"   - Added Dataflow: {name} ({from_name_raw} -> {to_name_raw}, Props: {params})")
         else:
             logging.warning(f"⚠️ Warning: Elements for dataflow '{name}' not found. From: '{from_name_raw}', To: '{to_name_raw}'.")
             

@@ -16,9 +16,12 @@
 Enhanced Diagram generation module with protocol styles and boundary attributes support
 """
 import html # Added line
+import os
 import subprocess
 import re
 import logging
+import json
+import datetime
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse # Added line
 from typing import Dict, List, Optional
@@ -26,6 +29,9 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from threat_analysis.core.models_module import ThreatModel
+from threat_analysis.config_generator import CONFIG_DATA
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 class DiagramGenerator:
     """Enhanced class for threat model diagram generation with protocol styles and boundary attributes"""
@@ -60,21 +66,33 @@ class DiagramGenerator:
             return None
 
     def generate_diagram_from_dot(self, dot_code: str, output_file: str, format: str = "svg") -> Optional[str]:
-        """Generates a diagram from a DOT string using Graphviz."""
+        """Generates a diagram from a DOT string."""
         if format not in self.supported_formats:
             logging.error(f"❌ Unsupported format: {format}. Supported formats: {self.supported_formats}")
             return None
-            
+
         if not self.check_graphviz_installation():
             logging.error("❌ Graphviz not found!")
             logging.warning(self.get_installation_instructions())
             return None
-            
+
+        # Use the custom SVG generator for SVG format
+        if format == "svg":
+            from threat_analysis.generation.svg_generator import CustomSVGGenerator
+            try:
+                logging.info("🎨 Using custom SVG generator for export")
+                generator = CustomSVGGenerator()
+                return generator.generate_svg_from_dot(dot_code, output_file)
+            except Exception as e:
+                logging.error(f"❌ Error in custom SVG export generation: {e}")
+                logging.info("🔄 Falling back to Graphviz for SVG export")
+                # Fallback to standard dot command below
+
+        # Standard dot command for other formats or as a fallback for SVG
         try:
             output_path_obj = Path(output_file)
             output_path_obj.parent.mkdir(parents=True, exist_ok=True)
             output_path = str(output_path_obj.with_suffix(f'.{format}'))
-
             cleaned_dot = self._clean_dot_code(dot_code)
             
             subprocess.run(
@@ -191,122 +209,183 @@ class DiagramGenerator:
         
         # Get element name and custom attributes
         if isinstance(element, dict):
-            # Handle dictionary format with 'object' key (your format)
             if 'object' in element:
-                # Get name from the PyTM object
                 pytm_object = element['object']
                 node_name = getattr(pytm_object, 'name', element.get('name', 'Unnamed'))
-                # Get custom attributes from the dict (not from PyTM object)
                 color = element.get('color')
                 is_filled = element.get('is_filled')
                 fillcolor = element.get('fillcolor')
             else:
-                # Handle simple dictionary format
                 node_name = element.get('name', 'Unnamed')
                 color = element.get('color')
                 is_filled = element.get('is_filled')
                 fillcolor = element.get('fillcolor')
         elif isinstance(element, str):
-            # Handle string format
             node_name = element
             color = None
             is_filled = None
             fillcolor = None
         else:
-            # Handle object format (old format)
             node_name = getattr(element, 'name', str(element))
             color = getattr(element, 'color', None)
             is_filled = getattr(element, 'is_filled', None)
             fillcolor = getattr(element, 'fillcolor', None)
         
-        node_name_lower = node_name.lower()
-        
-        # Escape the label
         escaped_name = self._escape_label(node_name)
         
-        # Check for special node types based on name
-        # Extract 'type' if available in the element dictionary
         element_type = None
         if isinstance(element, dict):
             element_type = element.get('type')
+
+        # 1. Determine shape, icon, layout, and sizing attributes
+        shape = 'box'
+        icon = ''
         
-        # Prioritize 'type' for rendering, then fall back to name-based inference
+        # This set defines which types get the side-by-side "server" layout
+        server_layout_types = {'server', 'web_server', 'api_gateway', 'app_server', 'central_server', 'authentication_server'}
+        
+        # Determine if the side-by-side layout should be used
+        use_server_layout = (element_type in server_layout_types) or \
+                            (node_type == 'server' and not element_type)
+
         if element_type == 'router':
-            attributes.append('shape=box')
-            default_fillcolor = '#FFD700'
+            shape = 'box'
             icon = '🌐 '
         elif element_type == 'switch':
-            attributes.append('shape=diamond')
-            default_fillcolor = 'orange'
+            shape = 'box'
             icon = '🔀 '
         elif element_type == 'firewall':
-            attributes.append('shape=hexagon')
-            default_fillcolor = 'red'
+            shape = 'hexagon'
             icon = '🔥 '
+            attributes.append("fixedsize=shape")
         elif element_type == 'database':
-            attributes.append('shape=cylinder')
+            shape = 'cylinder'
             icon = '🗄️ '
-            default_fillcolor = 'lightblue'
-        elif element_type == 'web_server': # Using 'web_server' as the type
-            attributes.append('shape=box')
-            attributes.append('style=filled')
-            attributes.append('fillcolor=lightgreen')
-            icon = '🌐 '
-            default_fillcolor = 'lightgreen'
-        elif element_type == 'api_gateway': # Using 'api_gateway' as the type
-            attributes.append('shape=box')
-            attributes.append('style=filled')
-            attributes.append('fillcolor=lightyellow')
-            icon = '🔌 '
-            default_fillcolor = 'lightyellow'
-        
-        else:
-            # Default shapes based on node type
-            if node_type == 'actor':
-                attributes.append('shape=oval')
-                icon = '👤 '
-                default_fillcolor = 'yellow'
-            elif node_type == 'server':
-                attributes.append('shape=box')
-                icon = '🖥️ '
-                default_fillcolor = 'lightgreen'
-            else:
-                attributes.append('shape=box')
-                default_fillcolor = 'lightblue'
-                icon = ''
-        
-        # Handle fill style
+        elif element_type == 'load_balancer':
+            shape = 'cylinder'
+            # The icon is handled by the SVG mapping, no emoji fallback needed here
+        elif node_type == 'actor':
+            shape = 'circle'
+            icon = '👤 '
+            attributes.append("fixedsize=shape")
+        elif use_server_layout:
+            shape = 'box'
+            icon = '🖥️ '
+            attributes.append("width=1.5")
+            attributes.append("height=0.75")
+
+        attributes.append(f'shape={shape}')
+
+        # 2. Set style and color
         if is_filled is not None:
             if is_filled:
                 attributes.append('style=filled')
             else:
                 attributes.append('style=""')
         else:
-            # Default to filled for most elements
             attributes.append('style=filled')
         
-        # Handle colors - priority: fillcolor > color > default
-        final_fillcolor = fillcolor or color or default_fillcolor
+        final_fillcolor = fillcolor or color or 'lightblue'
         if final_fillcolor:
             attributes.append(f'fillcolor="{final_fillcolor}"')
-        
-        # Handle border color (if different from fill color)
-        if color and fillcolor and color != fillcolor:
-            attributes.append(f'color="{color}"')
-        elif color and not fillcolor:
-            # If only color is specified, use it for border too
-            attributes.append(f'color="{color}"')
-        
-        # Set label with icon if applicable
-        if icon:
-            attributes.append(f'label="{icon}{escaped_name}"')
-        else:
-            attributes.append(f'label="{escaped_name}"')
 
-        # Add id for easier lookup
+        if color:
+            if not fillcolor or color != fillcolor:
+                attributes.append(f'color="{color}"')
+        
+        # 3. Handle icon and label generation
+        ICON_MAPPING = CONFIG_DATA["ICON_MAPPING"]
+        lookup_key = element_type if element_type else node_type
+        icon_relative_path = ICON_MAPPING.get(lookup_key)
+        filesystem_icon_path = None
+        if icon_relative_path:
+            filesystem_icon_path = PROJECT_ROOT / 'threat_analysis' / 'server' / icon_relative_path.lstrip('/')
+
+
+        if filesystem_icon_path and filesystem_icon_path.exists():
+            if use_server_layout:
+                # Side-by-side layout with left-aligned text
+                html_label = f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR>' \
+                             f'<TD WIDTH="30" HEIGHT="30" FIXEDSIZE="TRUE"><IMG SRC="{filesystem_icon_path}" SCALE="TRUE"/></TD>' \
+                             f'<TD ALIGN="LEFT">{escaped_name}</TD>' \
+                             f'</TR></TABLE>>'
+            else:
+                # Top-and-bottom layout for all other elements
+                html_label = f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">' \
+                             f'<TR><TD WIDTH="30" HEIGHT="30" FIXEDSIZE="TRUE"><IMG SRC="{filesystem_icon_path}" SCALE="TRUE"/></TD></TR>' \
+                             f'<TR><TD>{escaped_name}</TD></TR>' \
+                             f'</TABLE>>'
+            attributes.append(f'label={html_label}')
+        else:
+            # Fallback to emoji if no SVG icon is found, using HTML-like label for proper rendering
+            if not icon_relative_path:
+                logging.debug(f"ℹ️ No icon mapping for '{lookup_key}', using emoji '{icon}'")
+            else:
+                logging.warning(f"⚠️ Icon file not found: {filesystem_icon_path}, using emoji '{icon}'")
+    
+            if icon:
+                # Use HTML-like label for better rendering of icons and text in web GUI
+                attributes.append(f'label=<{icon}<br/>{escaped_name}>')
+            else:
+                attributes.append(f'label="{escaped_name}"')
+
+        # 4. Add common attributes
         attributes.append(f'id="{self._sanitize_name(node_name)}"')
         
         return f'[{", ".join(attributes)}]'
+
+    def generate_metadata(self, threat_model, markdown_content: str, output_path: str) -> Optional[str]:
+        """
+        Generates a metadata file for the graphical editor.
+        """
+        from threat_analysis.generation.graphviz_to_json_metadata import GraphvizToJsonMetadataConverter
+        
+        logging.info(f"📍 Generating metadata for graphical editor: {output_path}")
+        
+        try:
+            dot_code = self._generate_manual_dot(threat_model)
+            if not dot_code:
+                logging.error("❌ Failed to generate DOT code for metadata.")
+                return None
+
+            result = subprocess.run(
+                [self.dot_executable, "-Tjson"],
+                input=dot_code,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=True
+            )
+            graphviz_json = json.loads(result.stdout)
+
+            converter = GraphvizToJsonMetadataConverter()
+            element_positions = converter.convert(graphviz_json, threat_model)
+            
+            version = "1.0"
+            last_updated = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            version_id = f"{version}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            metadata = {
+                "version": version,
+                "version_id": version_id,
+                "last_updated": last_updated,
+                "model_file": os.path.basename(output_path),
+                "positions": element_positions
+            }
+            
+            metadata_path = str(output_path).replace('.md', '_metadata.json')
+            if metadata_path == str(output_path): # safety check if it's not .md
+                 metadata_path = str(output_path) + "_metadata.json"
+
+            with open(metadata_path, 'w', encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+                
+            logging.info(f"✅ Metadata generated: {metadata_path}")
+            return metadata_path
+
+        except Exception as e:
+            logging.error(f"❌ Error generating metadata: {e}")
+            return None
 
     def add_links_to_svg(self, svg_content: str, threat_model: ThreatModel) -> str:
         """
@@ -541,8 +620,6 @@ class DiagramGenerator:
                 actor_boundary_obj = None
                 if isinstance(actor_info, dict):
                     actor_boundary_obj = actor_info.get('boundary')
-                elif hasattr(actor_info, 'inBoundary'):
-                    actor_boundary_obj = actor_info.inBoundary
 
                 if actor_boundary_obj == boundary_obj:
                     actors_in_boundary.append({
@@ -556,8 +633,6 @@ class DiagramGenerator:
                 server_boundary_obj = None
                 if isinstance(server_info, dict):
                     server_boundary_obj = server_info.get('boundary')
-                elif hasattr(server_info, 'inBoundary'):
-                    server_boundary_obj = server_info.inBoundary
 
                 if server_boundary_obj == boundary_obj:
                     servers_in_boundary.append({
@@ -641,18 +716,24 @@ class DiagramGenerator:
                     escaped_dest = self._escape_label(dest_name)
                     protocol = getattr(df, 'protocol', None)
 
-                    label_parts = [self._escape_label(df.name)] if hasattr(df, 'name') and df.name else []
+                    label_parts = [df.name] if hasattr(df, 'name') and df.name else []
                     if protocol:
-                        label_parts.append(f"Protocol: {self._escape_label(protocol)}")
+                        label_parts.append(f"Protocol: {protocol}")
                     data_info = self._extract_data_info(df)
                     if data_info:
-                        label_parts.append(self._escape_label(data_info))
+                        label_parts.append(data_info)
                     if getattr(df, 'isEncrypted', False) or getattr(df, 'is_encrypted', False):
                         label_parts.append("🔒 Encrypted")
                     if getattr(df, 'authenticatedWith', False) or getattr(df, 'is_authenticated', False):
                         label_parts.append("🔐 Authenticated")
 
-                    label = "\n".join(label_parts) if label_parts else "Data Flow"
+                    if label_parts:
+                        escaped_parts = [html.escape(part) for part in label_parts]
+                        label_str = "<BR/>".join(escaped_parts)
+                        edge_attributes += f', label=<{label_str}>'
+                        label = ""  # Set original label to empty to allow override
+                    else:
+                        label = "Data Flow"
                     
                     if lhead:
                         edge_attributes += f", {lhead}"
@@ -845,6 +926,13 @@ class DiagramGenerator:
         
         return {}
 
+    def generate_custom_svg_export(self, dot_code: str, output_file: str) -> Optional[str]:
+        """
+        Generates SVG using custom SVG generator for export purposes.
+        This is a wrapper for generate_diagram_from_dot for backward compatibility.
+        """
+        return self.generate_diagram_from_dot(dot_code, output_file, "svg")
+ 
     def check_graphviz_installation(self) -> bool:
         """Checks if Graphviz is installed"""
         try:

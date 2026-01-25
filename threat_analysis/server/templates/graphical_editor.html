@@ -1,0 +1,259 @@
+<!--
+ Copyright 2025 ellipse2v
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graphical Threat Model Editor - Offline Mode</title>
+    <script type="text/javascript" src="/static/js/lib/konva.min.js"></script>
+    <script src="/static/js/lib/split.min.js"></script>
+    <script src="/static/js/lib/svg-pan-zoom.min.js"></script>
+    <script src="/static/js/config.js"></script>
+    <script src="/static/js/export_manager.js"></script>
+    <link rel="stylesheet" href="/static/css/dark_mode.css">
+    <link rel="stylesheet" href="/static/css/graphical_editor_style.css">
+</head>
+<body>
+    <script type="text/javascript" src="/static/js/dark_mode.js"></script>
+    <script type="text/javascript" src="/static/js/service_worker_registration.js"></script>
+    <script type="text/javascript" src="/static/js/KonvaManager.js"></script>
+    <script type="text/javascript" src="/static/js/NodeManager.js"></script>
+    <script type="text/javascript" src="/static/js/ConnectionManager.js"></script>
+    <script type="text/javascript" src="/static/js/PropertiesPanelManager.js"></script>
+    <script type="text/javascript" src="/static/js/ToolbarManager.js"></script>
+    <script type="text/javascript" src="/static/js/ThreatModelGenerator.js"></script>
+    <script type="text/javascript" src="/static/js/UIManager.js"></script>
+    <script type="text/javascript" src="/static/js/ModelManager.js"></script>
+    <script type="text/javascript" src="/static/js/app.js"></script>
+    <div class="header">
+        <h1>Graphical Editor</h1>
+        <div class="button-group">
+            <button id="open-model-btn">Open Model</button>
+            <button id="analyze-btn">Generate</button>
+            <div class="export-container">
+                <button id="export-btn" class="export-btn">📥 Export</button>
+                <div id="export-menu" class="export-menu">
+                    <div class="export-option" onclick="exportModel('svg')">📊 SVG Diagram</div>
+                    <div class="export-option" onclick="exportModel('diagram')">🖼️ HTML Diagram</div>
+                    <div class="export-option" onclick="exportModel('report')">📄 HTML Report</div>
+                    <div class="export-option" onclick="exportModel('json')">📋 JSON Analysis</div>
+                    <div class="export-option" onclick="exportModel('markdown')">📝 Markdown</div>
+                </div>
+            </div>
+            <div class="dark-mode-toggle" id="darkModeToggle">
+                <div class="dark-mode-toggle-indicator"></div>
+            </div>
+        </div>
+    </div>
+    <div id="container" class="split">
+        <div id="toolbar" style="width: 200px;">
+            <h2>Elements</h2>
+            <button class="toolbar-button" id="add-boundary">Add Boundary</button>
+            <button class="toolbar-button" id="add-actor"><img src="/static/resources/icons/actor.svg" alt="Actor" class="toolbar-icon"> Add Actor</button>
+
+            <div class="toolbar-separator"></div>
+            <button class="toolbar-button" id="add-server"><img src="/static/resources/icons/server.svg" alt="Server" class="toolbar-icon"> Generic Server</button>
+            <button class="toolbar-button" id="add-web-server"><img src="/static/resources/icons/web-server.svg" alt="Web Server" class="toolbar-icon"> Web Server</button>
+            <button class="toolbar-button" id="add-database"><img src="/static/resources/icons/database.svg" alt="Database" class="toolbar-icon"> Database</button>
+            <button class="toolbar-button" id="add-firewall"><img src="/static/resources/icons/firewall.svg" alt="Firewall" class="toolbar-icon"> Firewall</button>
+            <button class="toolbar-button" id="add-router"><img src="/static/resources/icons/routers.svg" alt="Router" class="toolbar-icon"> Router</button>
+            <button class="toolbar-button" id="add-switch"><img src="/static/resources/icons/switch.svg" alt="Switch" class="toolbar-icon"> Switch</button>
+            <div class="toolbar-separator"></div>
+            <button class="toolbar-button" id="add-data"><img src="/static/resources/icons/data.svg" alt="Data" class="toolbar-icon"> Add Data</button>
+        </div>
+        <div id="graph-container"></div>
+        <div id="properties-panel" style="width: 350px;">
+            <div class="tab-bar">
+                <button class="tab-button active" data-tab="properties">Properties</button>
+                <button class="tab-button" data-tab="analysis">Analysis</button>
+            </div>
+            <div id="properties" class="tab-content active">
+                <h2>Element Properties</h2>
+                <div id="properties-form" style="display: none;">
+                    <div class="prop-group">
+                        <label for="prop-name">Name:</label>
+                        <input type="text" id="prop-name" />
+                    </div>
+                    <div class="prop-group">
+                        <label for="prop-color">Color:</label>
+                        <input type="color" id="prop-color" />
+                    </div>
+                    <div class="prop-group" id="prop-description-group">
+                        <label for="prop-description">Description:</label>
+                        <textarea id="prop-description" rows="3"></textarea>
+                    </div>
+                    <div class="prop-group" id="prop-os-group">
+                        <label for="prop-os">OS:</label>
+                        <input type="text" id="prop-os" />
+                    </div>
+                    <div class="prop-group" id="prop-stereotype-group">
+                        <label for="prop-stereotype">Stereotype:</label>
+                        <input type="text" id="prop-stereotype" />
+                    </div>
+                    <div class="prop-group" id="prop-protocol-group" style="display: none;">
+                        <label for="prop-protocol">Protocol:</label>
+                        <select id="prop-protocol">
+                            <option value="TCP">TCP</option>
+                            <option value="UDP">UDP</option>
+                            <option value="HTTP">HTTP</option>
+                            <option value="HTTPS">HTTPS</option>
+                            <option value="FTP">FTP</option>
+                            <option value="SMB">SMB</option>
+                            <option value="RPC">RPC</option>
+                            <option value="SQL">SQL</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="prop-group" id="prop-is-encrypted-group" style="display: none;">
+                        <label for="prop-is-encrypted">Is Encrypted:</label>
+                        <input type="checkbox" id="prop-is-encrypted" />
+                    </div>
+                    <div class="prop-group" id="prop-is-authenticated-group" style="display: none;">
+                        <label for="prop-is-authenticated">Is Authenticated:</label>
+                        <input type="checkbox" id="prop-is-authenticated" />
+                    </div>
+                    <div class="prop-group" id="prop-data-group" style="display: none;">
+                        <label for="prop-data">Data:</label>
+                        <select id="prop-data"></select>
+                    </div>
+                    <div class="prop-group" id="prop-is-filled-group">
+                        <label for="prop-is-filled">Is Filled:</label>
+                        <input type="checkbox" id="prop-is-filled" />
+                    </div>
+                    <div class="prop-group" id="prop-is-trusted-group">
+                        <label for="prop-is-trusted">Is Trusted:</label>
+                        <input type="checkbox" id="prop-is-trusted" />
+                    </div>
+                    <div class="prop-group" id="prop-line-style-group">
+                        <label for="prop-line-style">Line Style:</label>
+                        <select id="prop-line-style">
+                            <option value="solid">Solid</option>
+                            <option value="dashed">Dashed</option>
+                            <option value="dotted">Dotted</option>
+                        </select>
+                    </div>
+                    <div class="prop-group" id="prop-format-group">
+                        <label for="prop-format">Format:</label>
+                        <input type="text" id="prop-format" />
+                    </div>
+                    <div class="prop-group" id="prop-credentials-life-group">
+                        <label for="prop-credentials-life">Credentials Life:</label>
+                        <input type="text" id="prop-credentials-life" />
+                    </div>
+                    <div class="prop-group" id="prop-classification-group">
+                        <label for="prop-classification">Classification:</label>
+                        <select id="prop-classification">
+                            <option value="public">Public</option>
+                            <option value="confidential">Confidential</option>
+                            <option value="secret">Secret</option>
+                            <option value="top-secret">Top Secret</option>
+                        </select>
+                    </div>
+                    <div class="prop-group" id="prop-cia-group">
+                        <label>CIA:</label>
+                        <select id="prop-confidentiality">
+                            <option value="low">C: Low</option>
+                            <option value="medium">C: Medium</option>
+                            <option value="high">C: High</option>
+                            <option value="critical">C: Critical</option>
+                        </select>
+                        <select id="prop-integrity">
+                            <option value="low">I: Low</option>
+                            <option value="medium">I: Medium</option>
+                            <option value="high">I: High</option>
+                            <option value="critical">I: Critical</option>
+                        </select>
+                        <select id="prop-availability">
+                            <option value="low">A: Low</option>
+                            <option value="medium">A: Medium</option>
+                            <option value="high">A: High</option>
+                            <option value="critical">A: Critical</option>
+                        </select>
+                    </div>
+                </div>
+                 <div id="no-selection">
+                    Select an element to see its properties.
+                    <hr style="margin-top: 20px; margin-bottom: 20px;">
+                    <h3>Graph Properties</h3>
+                    <div>
+                        <label for="graph-bg-color">Background Color:</label>
+                        <input type="color" id="graph-bg-color" value="#ffffff">
+                    </div>
+                 </div>
+            </div>
+            <div id="analysis" class="tab-content">
+                <h2>Analysis Result</h2>
+                <div id="analysis-result-container">Analysis results will appear here.</div>
+                <h2>Legend</h2>
+                <div id="legend-container">Legend will appear here.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="open-model-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Open Threat Model</h2>
+            <div id="model-list-container">
+                <p>Loading models...</p>
+            </div>
+            <button id="refresh-models-btn">Refresh</button>
+            <button id="open-from-computer-btn">Open from computer</button>
+            <input type="file" id="file-input" multiple accept=".md,.json" style="display: none;">
+        </div>
+    </div>
+
+    <div id="data-manager-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="close-data-modal">&times;</span>
+            <h2>Manage Data Dictionary</h2>
+            <div id="data-list-container" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px;">
+                <!-- Data items will be listed here -->
+            </div>
+            <h3>Add/Edit Data Item</h3>
+            <div class="prop-group">
+                <label for="data-name">Name:</label>
+                <input type="text" id="data-name" placeholder="e.g. Web Traffic">
+            </div>
+            <div class="prop-group">
+                <label for="data-description">Description:</label>
+                <input type="text" id="data-description">
+            </div>
+            <div class="prop-group">
+                <label for="data-classification">Classification:</label>
+                <select id="data-classification">
+                    <option value="public">Public</option>
+                    <option value="restricted">Restricted</option>
+                    <option value="confidential">Confidential</option>
+                    <option value="secret">Secret</option>
+                    <option value="top-secret">Top Secret</option>
+                </select>
+            </div>
+            <div class="prop-group">
+                <label for="data-format">Format:</label>
+                <input type="text" id="data-format">
+            </div>
+            <div class="prop-group">
+                <label for="data-credentials-life">Credentials Life:</label>
+                <input type="text" id="data-credentials-life">
+            </div>
+            <button id="save-data-item-btn">Save Item</button>
+            <button id="new-data-item-btn">Clear Form</button>
+        </div>
+    </div>
+</body>
+</html>

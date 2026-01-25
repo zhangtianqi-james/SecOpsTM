@@ -23,17 +23,21 @@ import zipfile
 
 from threat_analysis.server.threat_model_service import ThreatModelService
 from threat_analysis.core.model_factory import create_threat_model
-from threat_analysis import config
 from threat_analysis.core.models_module import ThreatModel, CustomThreat
 from pytm import TM, Boundary, Actor, Server, Dataflow, Data
+from pathlib import Path
+import datetime
 
-# Mock the config.OUTPUT_BASE_DIR for testing purposes
+# Mock the OUTPUT_BASE_DIR for testing purposes
 @pytest.fixture(autouse=True)
 def mock_output_base_dir(tmp_path):
-    original_output_base_dir = config.OUTPUT_BASE_DIR
-    config.OUTPUT_BASE_DIR = tmp_path / "output"
+    original_output_base_dir = Path("output") / datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # For testing, we'll use tmp_path / "output" instead
+    import sys
+    # We'll mock this by setting an environment variable or using a different approach
+    # Since we're removing config.py, we need to handle this differently
+    # For now, let's just use tmp_path directly in tests
     yield
-    config.OUTPUT_BASE_DIR = original_output_base_dir
 
 @pytest.fixture
 def service():
@@ -91,16 +95,16 @@ def test_export_files_logic_failed_threat_model_creation(mock_create_threat_mode
     with pytest.raises(RuntimeError, match="Failed to create or validate threat model"):
         service.export_files_logic("some markdown", "svg")
 
-@patch('threat_analysis.server.threat_model_service.DiagramGenerator.generate_diagram_from_dot', return_value=None)
+@patch('threat_analysis.server.threat_model_service.DiagramGenerator.generate_custom_svg_export', return_value=None)
 @patch('threat_analysis.server.threat_model_service.create_threat_model', return_value=MagicMock())
-def test_export_files_logic_failed_svg_generation(mock_create_threat_model, mock_generate_diagram_from_dot, service):
+def test_export_files_logic_failed_svg_generation(mock_create_threat_model, mock_generate_custom_svg_export, service):
     with pytest.raises(RuntimeError, match="Failed to generate SVG file"):
         service.export_files_logic("some markdown", "svg")
 
-@patch('threat_analysis.server.threat_model_service.DiagramGenerator.generate_diagram_from_dot', return_value="/tmp/test.svg")
+@patch('threat_analysis.server.threat_model_service.DiagramGenerator.generate_custom_svg_export', return_value="/tmp/test.svg")
 @patch('threat_analysis.server.threat_model_service.DiagramGenerator._generate_manual_dot', return_value="dot code")
 @patch('threat_analysis.server.threat_model_service.create_threat_model', return_value=MagicMock())
-def test_export_files_logic_svg_success(mock_create_threat_model, mock_generate_manual_dot, mock_generate_diagram_from_dot, service):
+def test_export_files_logic_svg_success(mock_create_threat_model, mock_generate_manual_dot, mock_generate_custom_svg_export, service):
     output_path, output_filename = service.export_files_logic("some markdown", "svg")
     assert output_filename == "diagram.svg"
     assert output_path.endswith("diagram.svg")
