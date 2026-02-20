@@ -441,6 +441,64 @@
         .svg-element-hidden {
             display: none !important;
         }
+        /* New styles for highlighting */
+        .highlighted { /* Group-level styling for related elements */
+            opacity: 1 !important;
+        }
+        /* Style ONLY the shapes of related elements */
+        .highlighted path, .highlighted polygon, .highlighted ellipse {
+            stroke: #007bff !important; /* Bright blue */
+            stroke-width: 3px !important;
+            transition: stroke 0.2s, stroke-width 0.2s;
+        }
+        /* More specific rule for EDGES to ensure they are highlighted */
+        g.edge.highlighted path, g.edge.highlighted polygon {
+            stroke: #007bff !important;
+            stroke-width: 4px !important;
+        }
+
+        /* Ensure text within related elements remains readable */
+        .highlighted text {
+            stroke: none !important;
+            fill: inherit !important;
+        }
+
+        .selected { /* Group-level styling for selected element */
+            opacity: 1 !important;
+        }
+        /* Style ONLY the shapes of the selected element */
+        .selected path, .selected polygon, .selected ellipse {
+            stroke: red !important;
+            stroke-width: 3px !important;
+            fill: rgba(255, 0, 0, 0.15) !important; /* A more subtle fill */
+            transition: stroke 0.2s, stroke-width 0.2s, fill 0.2s;
+        }
+        /* More specific rule for EDGES to ensure they are highlighted */
+        g.edge.selected path, g.edge.selected polygon {
+            stroke: red !important;
+            stroke-width: 4px !important;
+        }
+        
+        /* Ensure text within the selected element remains perfectly readable */
+        .selected text {
+            stroke: none !important;
+            fill: inherit !important; /* Inherit original text color */
+        }
+        
+        .faded {
+            opacity: 0.5 !important;
+            transition: opacity 0.2s ease-in-out;
+        }
+        /* Specific rules for text within faded elements to remain visible */
+        .faded text {
+            fill: inherit !important; /* Keep original text color */
+            opacity: 1 !important;   /* Keep text opaque */
+        }
+        /* Remove graph-element's conflicting styles - let Graphviz set defaults, then override with !important */
+        .graph-element {
+            /* No conflicting fill/stroke here */
+        }
+
     </style>
     <script src="/static/js/split.min.js"></script>
     <script src="/static/js/svg-pan-zoom.min.js"></script>
@@ -457,6 +515,8 @@
                 <div class="dropdown-content">
                     <button onclick="document.getElementById('loadFileInput').click()">📥 Load Model (.md)</button>
                     <input type="file" id="loadFileInput" accept=".md" style="display: none;" onchange="loadMarkdownFile(event)">
+                    <button onclick="TabManager.loadProject()">📂 Load Project</button>
+                    <button onclick="TabManager.clearAllTabs()">🗑️ Clear All</button>
                     <button onclick="saveProjectToServer()">💾 Save Project to Server</button>
                 </div>
             </div>
@@ -519,14 +579,123 @@
         const legendContainer = document.getElementById('legend-container');
         const errorMessageDiv = document.getElementById('errorMessage');
         let protocolVisibilityState = {};
+        
+        // Global variables for graph interaction
+        let globalGraphMetadata = null;
+        let currentlySelectedElementId = null;
+
+        // Function to apply highlighting
+        function highlightElement(elementId) {
+            // If the clicked element is already selected, clear highlighting and return.
+            if (currentlySelectedElementId === elementId) {
+                clearHighlighting();
+                return;
+            }
+
+            // Clear previous highlighting
+            clearHighlighting();
+            currentlySelectedElementId = elementId;
+
+            const svg = svgWrapper.querySelector('svg');
+            if (!svg || !globalGraphMetadata) {
+                return;
+            }
+
+            // Target element can be a node or an edge
+            const targetElement = globalGraphMetadata.nodes[elementId] || globalGraphMetadata.edges[elementId];
+            if (!targetElement) {
+                return;
+            }
+
+            // Get all visible SVG groups (nodes and edges)
+            const allSvgGroups = svg.querySelectorAll('g[id]');
+
+            // Apply faded class to all elements first
+            allSvgGroups.forEach(g => g.classList.add('faded'));
+
+            // Highlight the selected element
+            const selectedSvgElement = svg.querySelector(`g[id="${CSS.escape(elementId)}"]`);
+            if (selectedSvgElement) {
+                selectedSvgElement.classList.add('selected');
+                selectedSvgElement.classList.remove('faded');
+            }
+
+            // Highlight connected elements
+            const connectedElements = new Set();
+            const connectedEdges = new Set();
+
+            if (globalGraphMetadata.nodes[elementId]) { // If a node was clicked
+                globalGraphMetadata.nodes[elementId].connections.forEach(edgeId => {
+                    connectedEdges.add(edgeId);
+                    const edge = globalGraphMetadata.edges[edgeId];
+                    if (edge) {
+                        connectedElements.add(edge.source);
+                        connectedElements.add(edge.target);
+                    }
+                });
+            } else if (globalGraphMetadata.edges[elementId]) { // If an edge was clicked
+                const edge = globalGraphMetadata.edges[elementId];
+                if (edge) {
+                    connectedElements.add(edge.source);
+                    connectedElements.add(edge.target);
+                    connectedEdges.add(elementId);
+                }
+            }
+
+            connectedElements.forEach(connId => {
+                // Special handling for boundary clusters (g[id^="cluster_"])
+                if (connId.startsWith('__hidden_node_')) {
+                    const originalBoundaryId = connId.replace('__hidden_node_', '');
+                    const boundaryCluster = svg.querySelector(`g[id="cluster_${CSS.escape(originalBoundaryId)}"]`);
+                     if (boundaryCluster) {
+                        boundaryCluster.classList.add('highlighted');
+                        boundaryCluster.classList.remove('faded');
+                    }
+                }
+
+                const connSvgElementActual = svg.querySelector(`g[id="${CSS.escape(connId)}"]`);
+                if (connSvgElementActual) {
+                    connSvgElementActual.classList.add('highlighted');
+                    connSvgElementActual.classList.remove('faded');
+                }
+            });
+
+            connectedEdges.forEach(edgeId => {
+                const edgeSvgElement = svg.querySelector(`g[id="${CSS.escape(edgeId)}"]`);
+                if (edgeSvgElement) {
+                    edgeSvgElement.classList.add('highlighted');
+                    edgeSvgElement.classList.remove('faded');
+                }
+            });
+        }
+
+        // Function to clear all highlighting
+        function clearHighlighting() {
+            const svg = svgWrapper.querySelector('svg');
+            if (!svg) return;
+
+            const allSvgGroups = svg.querySelectorAll('g[id]');
+            allSvgGroups.forEach(g => {
+                g.classList.remove('selected', 'highlighted', 'faded');
+            });
+            currentlySelectedElementId = null;
+        }
 
         const TabManager = {
             editors: [],
             tabCount: 0,
 
             init: function() {
-                this.addTab('main.md', atob("{{ initial_markdown | e }}"), false);
-                this.switchTab(0);
+                const models = JSON.parse(atob("{{ initial_models | e }}"));
+                if (models.length > 0) {
+                    models.forEach((model, index) => {
+                        this.addTab(model.path, model.content, index !== 0);
+                    });
+                    this.switchTab(0);
+                } else {
+                    this.addTab('main.md', '', false);
+                    this.switchTab(0);
+                }
             },
 
             addTab: function(path, content = '', closable = true) {
@@ -625,19 +794,59 @@
                 updatePreview();
             },
 
-            closeTab: function(tabIndex) {
-                if (!this.editors[tabIndex] || !confirm(`Are you sure you want to close ${this.editors[tabIndex].path}?`)) {
+            closeTab: function(tabIndex, force = false) {
+                if (!this.editors[tabIndex] || (!force && !confirm(`Are you sure you want to close ${this.editors[tabIndex].path}?`))) {
                     return;
                 }
-                const { tabButton, tabPane, editor } = this.editors[tabIndex];
+                const { tabButton, tabPane } = this.editors[tabIndex];
                 tabButton.remove();
                 tabPane.remove();
-                // editor.toTextArea(); // Clean up CodeMirror instance
                 this.editors[tabIndex] = null;
 
-                // Switch to main tab
-                this.switchTab(0);
+                const remainingEditor = this.editors.find(e => e !== null);
+                if (remainingEditor) {
+                    this.switchTab(this.editors.indexOf(remainingEditor));
+                } else {
+                    // All tabs have been closed, properly reset the state
+                    this.tabCount = 0; // Reset counter
+                    this.editors = []; // Clear array
+                    this.addTab('main.md', `# Threat Model: New Model`, false);
+                    this.switchTab(0);
+                    // Explicitly clear the preview as no valid model is active
+                    svgWrapper.innerHTML = '';
+                    legendContainer.innerHTML = '';
+                    if (panZoomInstance) panZoomInstance.destroy();
+                    panZoomInstance = null;
+                    globalGraphMetadata = null;
+                }
             },
+
+           clearAllTabs: function() {
+               if (confirm('Are you sure you want to close all tabs and clear the editor?')) {
+                   // Remove all tab buttons and panes from the DOM
+                   const tabBar = document.getElementById('tab-bar');
+                   const tabContentArea = document.getElementById('tab-content-area');
+                   tabBar.innerHTML = '';
+                   tabContentArea.innerHTML = '';
+
+                   // Clear the editors array and reset tab count
+                   this.editors = [];
+                   this.tabCount = 0;
+
+                   // Add a single, new, empty tab
+                   this.addTab('main.md', '', false);
+                   this.switchTab(0);
+
+                   // Clear the preview pane
+                   document.getElementById('svg-wrapper').innerHTML = '';
+                   document.getElementById('legend-container').innerHTML = '';
+                   if (panZoomInstance) {
+                       panZoomInstance.destroy();
+                       panZoomInstance = null;
+                   }
+                   globalGraphMetadata = null;
+               }
+           },
 
             getActiveEditor: function() {
                 const activeTab = document.querySelector('.tab-button.active');
@@ -649,10 +858,16 @@
             },
 
             getAllData: function() {
-                const mainModelContent = this.editors[0]?.editor.getValue() || '';
+                const activeEditor = this.getActiveEditor();
+                if (!activeEditor) {
+                    return { mainModelContent: '', submodels: [] };
+                }
+                const mainModelContent = activeEditor.getValue();
                 const submodels = [];
+                // This logic might need adjustment depending on how submodels are identified.
+                // For now, we'll consider all *other* tabs as potential submodels.
                 this.editors.forEach((editorData, index) => {
-                    if (index > 0 && editorData) { // Skip main model
+                    if (editorData && editorData.editor !== activeEditor) {
                         submodels.push({
                             path: editorData.path,
                             content: editorData.editor.getValue()
@@ -691,7 +906,83 @@
                     this.switchTab(newIndex);
                 };
                 reader.readAsText(file);
-            }
+            },
+
+            loadProject: async function() {
+                try {
+                    // Use the File System Access API to open a directory
+                    const dirHandle = await window.showDirectoryPicker();
+                    const models = [];
+
+                    // Recursively read files from the selected directory
+                    async function processDirectory(directoryHandle) {
+                        for await (const entry of directoryHandle.values()) {
+                            if (entry.kind === 'file' && (entry.name.endsWith('.md'))) {
+                                const file = await entry.getFile();
+                                const content = await file.text();
+                                // Create a relative path from the project root
+                                const rootPath = dirHandle.name;
+                                let relativePath = file.name; // Fallback
+                                try {
+                                    // This is a bit of a trick to get a relative path, might not be perfect
+                                    const fullPathParts = await dirHandle.resolve(entry);
+                                    if (fullPathParts) {
+                                       relativePath = fullPathParts.join('/');
+                                    }
+                                } catch(e) { console.warn("Could not resolve file path, using name as fallback.", e); }
+                                
+                                models.push({
+                                    path: relativePath,
+                                    content: content
+                                });
+                            } else if (entry.kind === 'directory') {
+                                await processDirectory(entry);
+                            }
+                        }
+                    }
+
+                    await processDirectory(dirHandle);
+
+                    if (models.length === 0) {
+                        alert('No markdown files (.md) found in the selected directory or its subdirectories.');
+                        return;
+                    }
+
+                    // Clear existing tabs
+                    this.editors.forEach((editorData, index) => {
+                        if (editorData) {
+                            editorData.tabButton.remove();
+                            editorData.tabPane.remove();
+                            this.editors[index] = null;
+                        }
+                    });
+                    this.editors = []; // Reset the array
+                    this.tabCount = 0;
+                    document.getElementById('tab-bar').innerHTML = '';
+                    document.getElementById('tab-content-area').innerHTML = '';
+
+
+                    // Add new tabs for the loaded project
+                    models.forEach((model, index) => {
+                        this.addTab(model.path, model.content, index !== 0 || models.length > 1);
+                    });
+                    
+                    if (models.length > 0) {
+                        this.switchTab(0); // Switch to the first tab
+                    }
+
+                    alert('Project loaded successfully!');
+
+                } catch (error) {
+                    // Handle cases where the user cancels the dialog or API is not supported
+                    if (error.name === 'AbortError') {
+                        console.log('User cancelled the directory selection.');
+                    } else {
+                        console.error('Error loading project:', error);
+                        alert(`Failed to load project: ${error.message}\n\nNote: This feature requires a modern browser that supports the File System Access API.`);
+                    }
+                }
+            },
         };
 
         // Dark mode functionality
@@ -720,10 +1011,11 @@
 
             const markdownContent = activeEditor.getValue();
             try {
+                const { mainModelContent, submodels } = TabManager.getAllData();
                 const response = await fetch('/api/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ markdown: markdownContent }),
+                    body: JSON.stringify({ markdown: mainModelContent, submodels: submodels }),
                 });
                 if (!response.ok) {
                     const errorData = await response.json();
@@ -732,6 +1024,7 @@
                     legendContainer.innerHTML = '';
                     if (panZoomInstance) panZoomInstance.destroy();
                     panZoomInstance = null;
+                    globalGraphMetadata = null; // Clear metadata on error
                     return;
                 }
                 const data = await response.json();
@@ -739,6 +1032,7 @@
                 if (panZoomInstance) panZoomInstance.destroy();
                 svgWrapper.innerHTML = data.diagram_svg;
                 legendContainer.innerHTML = data.legend_html;
+                globalGraphMetadata = data.graph_metadata; // Store graph metadata
 
                 const modelNameSpan = document.querySelector('.header h1 span');
                 if (modelNameSpan) modelNameSpan.textContent = `- ${data.model_name}`;
@@ -758,9 +1052,32 @@
                         maxZoom: 10
                     });
                     console.log("svgPanZoom initialized with instance:", panZoomInstance);
+
+                    // Add a single click listener to the SVG container for event delegation
+                    svgElement.addEventListener('click', (e) => {
+                        // Find the closest parent group that is a graph element
+                        const g = e.target.closest('.graph-element');
+
+                        if (g) {
+                            // A graph element (node or edge) was clicked
+                            e.stopPropagation(); // Stop event from propagating further, just in case
+                            highlightElement(g.id);
+                        } else {
+                            // The background was clicked, clear any highlighting
+                            clearHighlighting();
+                        }
+                    });
+
+                    // Add graph-element class to all groups with an ID for easy identification by the listener
+                    const allSvgGroups = svgElement.querySelectorAll('g[id]');
+                    allSvgGroups.forEach(g => {
+                        g.classList.add('graph-element');
+                    });
+
                 } else {
                     console.log("SVG element not found in svgWrapper. Not initializing svgPanZoom.");
                     panZoomInstance = null;
+                    globalGraphMetadata = null; // Clear metadata if SVG is missing
                 }
             } catch (error) {
                 showErrorMessage(`Failed to fetch preview: ${error.message}`);
@@ -768,6 +1085,7 @@
                 legendContainer.innerHTML = '';
                 if (panZoomInstance) panZoomInstance.destroy();
                 panZoomInstance = null;
+                globalGraphMetadata = null; // Clear metadata on error
             }
         }
 
@@ -799,34 +1117,145 @@
 
 
         async function generateAllFiles() {
-            const { mainModelContent, submodels } = TabManager.getAllData();
-            try {
-                const response = await fetch('/api/generate_all', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ markdown: mainModelContent, submodels: submodels }),
-                });
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    try {
-                        const errorData = JSON.parse(errorText);
-                        alert(`Generate All failed: ${errorData.error}`);
-                    } catch (e) {
-                        console.error("Server returned non-JSON error response:", errorText);
-                        alert("Generate All failed: The server returned an unexpected error. Check the browser's developer console for more details.");
+            const { mainModelContent, submodels: openSubmodels } = TabManager.getAllData();
+            let allFiles = TabManager.editors.filter(e => e !== null).map(e => ({
+                path: e.path,
+                content: e.editor.getValue()
+            }));
+
+            function resolvePath(base, relative) {
+                const stack = base.split('/');
+                stack.pop(); // remove filename
+                const parts = relative.split('/');
+                for (let i = 0; i < parts.length; i++) {
+                    if (parts[i] === '.') continue;
+                    if (parts[i] === '..') {
+                        if (stack.length > 0) stack.pop();
+                    } else {
+                        stack.push(parts[i]);
                     }
-                    return;
                 }
-                const result = await response.json();
-                if (result.success) {
-                    alert(`Success! All files generated in: ${result.generation_dir}`);
-                } else {
-                    alert(`Generate All failed: ${result.error || 'Unknown error'}`);
-                }
-            } catch (error) {
-                console.error('Generate All error:', error);
-                alert('An error occurred during generation.');
+                return stack.join('/');
             }
+
+            let hasPotentialUnresolved = false;
+            const openPaths = new Set(allFiles.map(f => f.path));
+            const subModelRegex = /sub_model_path\s*=\s*"(.*?)"/g;
+
+            for (const fileData of allFiles) {
+                let match;
+                while ((match = subModelRegex.exec(fileData.content)) !== null) {
+                    const referencedPath = match[1];
+                    try {
+                        const resolvedPath = resolvePath(fileData.path, referencedPath);
+                        if (!openPaths.has(resolvedPath)) {
+                            hasPotentialUnresolved = true;
+                            break;
+                        }
+                    } catch (e) {
+                        console.error("Path resolution error:", e);
+                        hasPotentialUnresolved = true;
+                        break;
+                    }
+                }
+                if (hasPotentialUnresolved) break;
+            }
+
+            if (hasPotentialUnresolved) {
+                if (confirm("This model appears to reference sub-models that are not open. To ensure a complete generation, please select the project's root directory.")) {
+                    try {
+                        const dirHandle = await window.showDirectoryPicker();
+                        const inMemoryFiles = [];
+                        
+                        async function processDirectory(directoryHandle, currentRelativePath) {
+                            for await (const entry of directoryHandle.values()) {
+                                const newRelativePath = currentRelativePath ? `${currentRelativePath}/${entry.name}` : entry.name;
+                                if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+                                    const file = await entry.getFile();
+                                    const content = await file.text();
+                                    inMemoryFiles.push({ path: newRelativePath, content: content });
+                                } else if (entry.kind === 'directory') {
+                                    await processDirectory(entry, newRelativePath);
+                                }
+                            }
+                        }
+                        
+                        await processDirectory(dirHandle, '');
+
+                        const tabFilePaths = new Set(allFiles.map(f => f.path));
+                        inMemoryFiles.forEach(memFile => {
+                            if (!tabFilePaths.has(memFile.path)) {
+                                allFiles.push(memFile);
+                            }
+                        });
+
+                    } catch (error) {
+                        if (error.name === 'AbortError') {
+                            alert("Directory selection cancelled. Proceeding with open tabs only.");
+                        } else {
+                            alert(`Error accessing directory: ${error.message}. Aborting generation.`);
+                            return;
+                        }
+                    }
+                }
+            }
+
+           try {
+               // Ensure `allFiles` contains all models (active tab, other tabs, and picked files).
+               // The main model (active tab content) is sent as 'markdown'.
+               // All other models are sent as 'submodels'.
+               const activeEditorPath = TabManager.getActiveEditor().path;
+               const finalSubmodels = allFiles.filter(fileData => fileData.path !== activeEditorPath);
+
+               // Step 1: Resolve all sub-models recursively from the full set of project files
+               const resolveResponse = await fetch('/api/resolve_submodels', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({
+                       main_model_content: mainModelContent,
+                       project_files: allFiles // Send all collected files for resolution
+                   })
+               });
+
+               if (!resolveResponse.ok) {
+                   const errorData = await resolveResponse.json();
+                   throw new Error(`Sub-model resolution failed: ${errorData.error}`);
+               }
+               // We don't need resolvedData from here to filter finalSubmodels, as finalSubmodels already contains them.
+               // The important part is that the server's resolution logic is run with all context.
+
+               const generateResponse = await fetch('/api/generate_all', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({
+                       markdown: mainModelContent, // Content of the active editor
+                       submodels: finalSubmodels  // All other collected models
+                   }),
+               });
+
+               if (!generateResponse.ok) {
+                   const errorText = await generateResponse.text();
+                   try {
+                       const errorData = JSON.parse(errorText);
+                       alert(`Generate All failed: ${errorData.error}`);
+                   } catch (e) {
+                       console.error("Server returned non-JSON error response:", errorText);
+                       alert("Generate All failed: The server returned an unexpected error.");
+                   }
+                   return;
+               }
+
+               const result = await generateResponse.json();
+               if (result.success) {
+                   alert(`Success! All files generated in: ${result.generation_dir}`);
+               } else {
+                   alert(`Generate All failed: ${result.error || 'Unknown error'}`);
+               }
+
+           } catch (error) {
+               console.error('Generate All process error:', error);
+               alert(`An error occurred during the generation process: ${error.message}`);
+           }
         }
 
         function showErrorMessage(message) {
@@ -850,11 +1279,14 @@
         });
 
         function toggleProtocolVisibility(protocolClass) {
+            const legendItem = document.querySelector(`.legend-item[data-protocol="${protocolClass}"]`);
             // Update the state
             if (protocolVisibilityState[protocolClass] === 'hidden') {
                 protocolVisibilityState[protocolClass] = 'visible';
+                if(legendItem) legendItem.style.opacity = 1;
             } else {
                 protocolVisibilityState[protocolClass] = 'hidden';
+                if(legendItem) legendItem.style.opacity = 0.5;
             }
              console.log(`Toggling ${protocolClass} to ${protocolVisibilityState[protocolClass]}`);
             // Apply the new state
@@ -866,19 +1298,19 @@
             const svg = svgWrapper.querySelector('svg');
             if (!svg) return;
 
-            for (const protocolClass in protocolVisibilityState) {
-                const elements = svg.querySelectorAll(`.${protocolClass}`);
-                const isHidden = protocolVisibilityState[protocolClass] === 'hidden';
-                
-                console.log(`Applying state for ${protocolClass}: ${isHidden ? 'hidden' : 'visible'}. Found ${elements.length} elements.`);
+            // First, make all elements visible
+            const allElements = svg.querySelectorAll('g');
+            allElements.forEach(el => el.classList.remove('svg-element-hidden'));
 
-                elements.forEach(el => {
-                    if (isHidden) {
+            // Then, hide the ones that should be hidden
+            for (const protocolClass in protocolVisibilityState) {
+                if (protocolVisibilityState[protocolClass] === 'hidden') {
+                    // Try different ways Graphviz might have applied the class
+                    const elementsToHide = svg.querySelectorAll(`g[class*="protocol-${protocolClass}"], .protocol-${protocolClass}`);
+                    elementsToHide.forEach(el => {
                         el.classList.add('svg-element-hidden');
-                    } else {
-                        el.classList.remove('svg-element-hidden');
-                    }
-                });
+                    });
+                }
             }
         }
         
@@ -905,16 +1337,14 @@
         }
 
         async function exportFile(format) {
-            const activeEditor = TabManager.getActiveEditor();
-            if (!activeEditor) return;
-            const markdownContent = activeEditor.getValue();
+            const { mainModelContent, submodels } = TabManager.getAllData();
             // This function could be interpreted as exporting the active file
             // or the entire project. For now, it exports the active file.
             try {
                 const response = await fetch('/api/export', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ markdown: markdownContent, format: format }),
+                    body: JSON.stringify({ markdown: mainModelContent, submodels: submodels, format: format }),
                 });
                 if (!response.ok) throw new Error((await response.json()).error);
                 const blob = await response.blob();
@@ -955,10 +1385,24 @@
 
         async function exportNavigatorAndStixButton() {
             const { mainModelContent, submodels } = TabManager.getAllData();
-            // This needs a dedicated project-aware backend endpoint.
-            // For now, let's use the export_all logic.
-            alert("Export Navigator & STIX for multi-tab projects is not fully implemented yet. Exporting as ZIP.");
-            await exportAllFiles();
+            try {
+                const response = await fetch('/api/export_navigator_stix', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ markdown: mainModelContent, submodels: submodels }),
+                });
+                if (!response.ok) throw new Error((await response.json()).error);
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = response.headers.get('Content-Disposition')?.split('filename=')[1] || 'navigator_stix_export.zip';
+                a.click();
+                URL.revokeObjectURL(url);
+                a.remove();
+            } catch (error) {
+                alert(`Export Navigator & STIX failed: ${error.message}`);
+            }
         }
 
         function loadMarkdownFile(event) {

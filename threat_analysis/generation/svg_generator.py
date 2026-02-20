@@ -188,17 +188,27 @@ class CustomSVGGenerator:
         elements.append(f'<rect fill="{data.get("bgcolor", default_style["background"])}" stroke="none" x="0" y="0" width="{width}" height="{height}"/>')
 
         objects = data.get('objects', [])
+        
+        # Create a mapping from Graphviz internal node names to sanitized names
+        node_id_to_name = {}
+        for obj in objects:
+            if 'name' in obj and not obj.get('name', '').startswith('cluster'):
+                node_id_to_name[obj['name']] = self._sanitize_name(obj.get('label', obj['name']))
+        logging.debug(f"CustomSVGGenerator: node_id_to_name mapping: {node_id_to_name}")
+
         for obj in objects:
             if obj.get('name', '').startswith('cluster'):
                 elements.extend(self._generate_cluster_svg(obj))
         for edge in data.get('edges', []):
-            elements.extend(self._generate_edge_svg(edge))
+            logging.debug(f"CustomSVGGenerator: Processing edge: {edge}")
+            elements.extend(self._generate_edge_svg(edge, objects))
         for obj in objects:
             if 'pos' in obj and not obj.get('name', '').startswith('cluster'):
                 elements.extend(self._generate_node_svg(obj))
                 
         elements.extend(['  </g>', '</svg>'])
         return '\n'.join(elements)
+
 
     def _process_draw_ops(self, ops: List[Dict], style: Dict) -> List[str]:
         svg = []
@@ -319,9 +329,41 @@ class CustomSVGGenerator:
         elements.append('  </g>')
         return elements
 
-    def _generate_edge_svg(self, edge: Dict) -> List[str]:
-        name = f"edge_{edge.get('tail','')}_{edge.get('head','')}"
-        elements = [f'  <g id="{self._escape_html(name)}">']
+    def _generate_edge_svg(self, edge: Dict, objects: List[Dict]) -> List[str]:
+        # Get tail and head indices
+        tail_idx = edge.get('tail')
+        head_idx = edge.get('head')
+
+        if tail_idx is None or head_idx is None or tail_idx >= len(objects) or head_idx >= len(objects):
+            return []
+
+        # Get the actual names of the nodes from the objects list
+        tail_node_name = objects[tail_idx].get('name', str(tail_idx))
+        head_node_name = objects[head_idx].get('name', str(head_idx))
+        
+        # Sanitize names for use in ID
+        sanitized_tail_name = self._sanitize_name(tail_node_name)
+        sanitized_head_name = self._sanitize_name(head_node_name)
+
+        # Construct the edge ID using sanitized names as a fallback
+        fallback_name = f"edge_{sanitized_tail_name}_{sanitized_head_name}"
+        name = edge.get('id', fallback_name)
+        logging.debug(f"CustomSVGGenerator: Using edge ID: {name}")
+
+        # Extract protocol from label to create a class for filtering
+        class_attr_parts = ['edge'] # Always add 'edge' class
+        label = edge.get('label', '')
+        # The label can be HTML-like, so we use a regex
+        match = re.search(r'Protocol:\s*([^<]+)', label, re.IGNORECASE)
+        if match:
+            protocol = match.group(1)
+            protocol_class = self._sanitize_name(protocol)
+            class_attr_parts.append(f'protocol-{protocol_class}')
+            logging.debug(f"CustomSVGGenerator: Found protocol, adding class: {protocol_class}")
+        
+        class_attr = f' class="{" ".join(class_attr_parts)}"'
+
+        elements = [f'  <g id="{self._escape_html(name)}"{class_attr}>']
         style = self.default_styles['edge'].copy()
         for key in ('_draw_', '_hdraw_', '_tdraw_', '_ldraw_'):
             if key in edge: elements.extend(self._update_and_process_ops(edge[key], style))
