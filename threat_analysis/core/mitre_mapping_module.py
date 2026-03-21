@@ -33,13 +33,12 @@ from threat_analysis.core.mitre_static_maps import ATTACK_D3FEND_MAPPING
 class MitreMapping:
     """Class for managing MITRE ATT&CK mapping with D3FEND mitigations"""
     def __init__(self, threat_model=None, threat_model_path: str = ""):
-        self.d3fend_details = data_loader.load_d3fend_mapping()
-        self.capec_to_mitre_map = data_loader.load_capec_to_mitre_mapping()
-        self.stride_to_capec = data_loader.load_stride_to_capec_map()
-        self.all_attack_techniques = data_loader.load_attack_techniques()
-        self.mitigation_stix_mapper = MitigationStixMapper()
-        self.technique_to_mitigation_map = self.mitigation_stix_mapper.attack_to_mitigations_map
-        logging.info(f"MitreMapping initialized. technique_to_mitigation_map size: {len(self.technique_to_mitigation_map)}")
+        self._d3fend_details = None
+        self._capec_to_mitre_map = None
+        self._stride_to_capec = None
+        self._all_attack_techniques = None
+        self._mitigation_stix_mapper = None
+        self._technique_to_mitigation_map = None
         self.custom_threats = self._load_custom_threats(threat_model)
         self.custom_mitre_mappings = []
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -48,6 +47,43 @@ class MitreMapping:
             if os.path.exists(full_markdown_path):
                 self.custom_mitre_mappings = self._load_custom_mitre_mappings_from_markdown(full_markdown_path)
         self.markdown_mitigations = {}
+
+    @property
+    def d3fend_details(self):
+        if self._d3fend_details is None:
+            self._d3fend_details = data_loader.load_d3fend_mapping()
+        return self._d3fend_details
+
+    @property
+    def capec_to_mitre_map(self):
+        if self._capec_to_mitre_map is None:
+            self._capec_to_mitre_map = data_loader.load_capec_to_mitre_mapping()
+        return self._capec_to_mitre_map
+
+    @property
+    def stride_to_capec(self):
+        if self._stride_to_capec is None:
+            self._stride_to_capec = data_loader.load_stride_to_capec_map()
+        return self._stride_to_capec
+
+    @property
+    def all_attack_techniques(self):
+        if self._all_attack_techniques is None:
+            self._all_attack_techniques = data_loader.load_attack_techniques()
+        return self._all_attack_techniques
+
+    @property
+    def mitigation_stix_mapper(self):
+        if self._mitigation_stix_mapper is None:
+            self._mitigation_stix_mapper = MitigationStixMapper()
+        return self._mitigation_stix_mapper
+
+    @property
+    def technique_to_mitigation_map(self):
+        if self._technique_to_mitigation_map is None:
+            self._technique_to_mitigation_map = self.mitigation_stix_mapper.attack_to_mitigations_map
+            logging.info(f"MitreMapping technique_to_mitigation_map loaded. size: {len(self._technique_to_mitigation_map)}")
+        return self._technique_to_mitigation_map
 
 
     def _load_custom_threats(self, threat_model) -> Dict[str, List[Dict[str, Any]]]:
@@ -141,16 +177,16 @@ class MitreMapping:
         found_capecs = {}
         stride_category = threat.get("stride_category", "")
 
-        direct_capec_ids = threat.get("capec_ids", [])
-        if not direct_capec_ids:
-            normalized_stride = stride_category.replace(" ", "")
-            if "DenialOfService" in normalized_stride:
-                 normalized_stride = "DenialOfService"
-            capec_list = self.stride_to_capec.get(normalized_stride, [])
+        explicit_capec_ids = threat.get("capec_ids", [])
+        if not explicit_capec_ids:
+            # No CAPEC IDs provided — derive from STRIDE category
+            capec_list = self.stride_to_capec.get(stride_category, [])
             direct_capec_ids = [c['capec_id'] for c in capec_list]
             for capec_info in capec_list:
                 if capec_info['capec_id'] not in found_capecs:
                     found_capecs[capec_info['capec_id']] = capec_info
+        else:
+            direct_capec_ids = list(explicit_capec_ids)
 
         for capec_id in direct_capec_ids:
             if capec_id not in found_capecs:
@@ -188,6 +224,31 @@ class MitreMapping:
 
                     found_techniques[tech_id] = technique_data
         
+        # Fallback: if explicit CAPEC IDs were provided but none mapped to ATT&CK techniques,
+        # fall back to the stride_category lookup so reports are never empty.
+        if explicit_capec_ids and not found_techniques and stride_category:
+            capec_list = self.stride_to_capec.get(stride_category, [])
+            for capec_info in capec_list:
+                cid = capec_info['capec_id']
+                if cid not in found_capecs:
+                    found_capecs[cid] = capec_info
+                for tech_info in self.capec_to_mitre_map.get(cid, []):
+                    tech_id = tech_info.get('id')
+                    if tech_id and tech_id in self.all_attack_techniques and tech_id not in found_techniques:
+                        technique_data = self.all_attack_techniques[tech_id].copy()
+                        technique_data['fromMitre'] = tech_info.get('fromMitre', 'yes')
+                        technique_data['mitre_mitigations'] = self.technique_to_mitigation_map.get(tech_id, [])
+                        d3fend_list = []
+                        for mm in technique_data['mitre_mitigations']:
+                            if mm.get('id'):
+                                d3fend_list.extend(self._get_d3fend_mitigations_for_mitre_id(mm['id']))
+                        technique_data['defend_mitigations'] = d3fend_list
+                        framework_mitigations = get_framework_mitigation_suggestions([tech_id])
+                        technique_data['owasp_mitigations'] = [m for m in framework_mitigations if m.get('framework') == 'OWASP ASVS']
+                        technique_data['nist_mitigations'] = [m for m in framework_mitigations if m.get('framework') == 'NIST']
+                        technique_data['cis_mitigations'] = [m for m in framework_mitigations if m.get('framework') == 'CIS']
+                        found_techniques[tech_id] = technique_data
+
         return {
             "techniques": list(found_techniques.values()),
             "capecs": list(found_capecs.values())

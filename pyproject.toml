@@ -24,19 +24,40 @@ classifiers = [
 ]
 dependencies = [
     "pytm",
-    "Flask",
+    "Flask[async]",
     "Jinja2",
     "graphviz",
     "pandas",
+    "PyYAML",
+    "lxml",
+    "openpyxl",
+    "msoffcrypto-tool",
+    "aiohttp",
+]
+
+[project.optional-dependencies]
+# Install AI/ML features with: pip install -e ".[ai]"
+# Or use requirements.txt for the full pinned list: pip install -r requirements.txt
+ai = [
+    "litellm>=1.32.2",
+    "chromadb>=0.4.24",
+    "sentence-transformers>=2.7.0",
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/ellipse2v/SecOpsTM"
 "Bug Tracker" = "https://github.com/ellipse2v/SecOpsTM/issues"
 
+[project.scripts]
+secopstm = "threat_analysis.__main__:main"
+
 [tool.setuptools.packages.find]
 where = ["."] # Search for packages in the current directory
 include = ["threat_analysis*"] # Include threat_analysis and its subpackages
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["tooling", "venv-py310", "venv", ".venv", "output", "node_modules"]
 
 [tool.coverage.run]
 omit = ["tests/*"]

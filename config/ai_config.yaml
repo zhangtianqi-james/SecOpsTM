@@ -1,0 +1,92 @@
+# ---------------------------------------------------------------------------
+# Enterprise SSL — global certificate for all LiteLLM HTTP transports.
+# Set this when your company uses a custom CA / SSL inspection proxy.
+# This path is applied to SSL_CERT_FILE and REQUESTS_CA_BUNDLE so that
+# LiteLLM's internal httpx/requests calls trust your corporate PKI.
+# Per-provider override: set ssl_verify: "/path/to/cert.pem" on the provider.
+# ssl_cert_file: "/etc/ssl/certs/company-ca.pem"
+# ---------------------------------------------------------------------------
+
+# Provider configuration
+ai_providers:
+  mistral:
+    enabled: true
+    model: "mistral-small-latest"
+    api_key_env: "MISTRAL_API_KEY"
+    api_base: ""  # Set your internal enterprise host here (e.g. http://mistral.internal:8000/v1)
+    temperature: 0.3
+    max_tokens: 4096
+    timeout: 30
+    ssl_verify: true  # true | false | "/path/to/ca-bundle.crt"  (false = disable SSL for enterprise self-signed certs)
+
+  gemini:
+    enabled: false
+    model: "gemini-flash-latest"
+    api_key_env: "GOOGLE_API_KEY"
+    api_base: ""  # Set your internal enterprise host here
+    temperature: 0.3
+    max_tokens: 4096
+    timeout: 30
+    ssl_verify: true  # true | false | "/path/to/ca-bundle.crt"  (false = disable SSL for enterprise self-signed certs)
+
+  openai:
+    enabled: false
+    model: "gpt-4o-mini"
+    api_key_env: "OPENAI_API_KEY"
+    api_base: ""  # Set your internal enterprise host here
+    ssl_verify: true  # true | false | "/path/to/ca-bundle.crt"  (false = disable SSL for enterprise self-signed certs)
+
+
+  ollama:
+    enabled: false
+    model: "llama3:8b-instruct-q4_K_M"
+    host: "http://127.0.0.1:11434"
+    stream: true
+    num_ctx: 4096
+    num_predict: 4096
+    timeout: 60
+    ssl_verify: true  # true | false | "/path/to/ca-bundle.crt"  (false = disable SSL for enterprise self-signed certs)
+
+# Threat generation settings
+threat_generation:
+  mode: "hybrid"  # "traditional", "ai", "hybrid"
+  confidence_threshold: 0.75
+  fallback_to_traditional: true
+  max_threats_per_component: 10
+  include_attack_flows: true
+  # Delay (seconds) between per-component LLM calls.
+  # Set to 1.5 for Gemini free tier, 0.0 for paid/Ollama.
+  rate_limit_sleep: 0.0
+  # Maximum number of concurrent AI requests during component enrichment.
+  # 1 = sequential (safe for Gemini free tier, 15 RPM); 3–5 for paid tiers or Ollama.
+  max_concurrent_ai_requests: 1
+
+# Embedding configuration (Shared between Vector Store and RAG)
+embedding:
+  provider: huggingface        # huggingface | google | mistral | ollama
+  model: all-MiniLM-L6-v2
+  device: cpu                  # cpu | cuda
+  api_base: ""                 # Override API host for embedding (enterprise: e.g. http://mistral.internal:8000/v1)
+  ssl_verify: true             # true | false | "/path/to/ca-bundle.crt"
+
+# RAG configuration (Phase 2)
+rag:
+  enabled: true
+  vector_db: "chroma"
+  top_k_examples: 5
+
+# Attack Flow generation
+attack_flows:
+  enabled: true
+  format: "stix_2.1"
+  max_depth: 7
+  include_detection_points: true
+  generate_for_categories: ["Tampering", "Information Disclosure", "Elevation of Privilege"]
+
+# Fine-tuning (Phase 3 optionnel)
+fine_tuning:
+  enabled: false
+  base_model: "mistralai/Ministral-8B"
+  lora_rank: 16
+  lora_alpha: 32
+  dataset_path: "data/training/threat_dataset.jsonl"

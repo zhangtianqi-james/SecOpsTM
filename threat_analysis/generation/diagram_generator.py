@@ -41,13 +41,13 @@ class DiagramGenerator:
         self.supported_formats = ["svg", "png", "pdf", "ps"]
         self.template_env = Environment(loader=FileSystemLoader(Path(__file__).parent.parent / "templates"))
     
-    def generate_dot_file_from_model(self, threat_model, output_file: str, project_protocol_styles: Optional[Dict] = None) -> Optional[str]:
+    def generate_dot_file_from_model(self, threat_model, output_file: str, project_protocol_styles: Optional[Dict] = None, external_connections: Optional[List[Dict]] = None) -> Optional[str]:
         """
         Generates DOT code from the threat model, saves it to a file,
         and returns the DOT code as a string.
         """
         try:
-            dot_code = self._generate_manual_dot(threat_model, project_protocol_styles)
+            dot_code = self._generate_manual_dot(threat_model, project_protocol_styles, external_connections=external_connections)
             
             if not dot_code or not dot_code.strip():
                 logging.error("❌ Unable to generate DOT code from model. DOT code is empty.")
@@ -553,7 +553,7 @@ class DiagramGenerator:
         
         return False
 
-    def _generate_manual_dot(self, threat_model, project_protocol_styles: Optional[Dict] = None) -> str:
+    def _generate_manual_dot(self, threat_model, project_protocol_styles: Optional[Dict] = None, external_connections: Optional[List[Dict]] = None) -> str:
         """Generates DOT code from ThreatModel components using Jinja2 template."""
         template = self.template_env.get_template("threat_model.dot.j2")
 
@@ -561,14 +561,132 @@ class DiagramGenerator:
         actors_outside_boundaries_data = self._prepare_nodes_data(threat_model, "actor")
         servers_outside_boundaries_data = self._prepare_nodes_data(threat_model, "server")
         dataflows_data = self._prepare_dataflows_data(threat_model, project_protocol_styles)
+        ghost_connections = self._build_ghost_connections(threat_model, external_connections or [])
 
         context = {
             "boundaries": boundaries_data,
             "actors_outside_boundaries": actors_outside_boundaries_data,
             "servers_outside_boundaries": servers_outside_boundaries_data,
             "dataflows": dataflows_data,
+            "ghost_connections": ghost_connections,
         }
         return template.render(context)
+
+    def _build_ghost_connections(self, threat_model, external_connections: List[Dict]) -> List[Dict]:
+        """Builds ghost node data for external (parent model) connections.
+
+        For incoming connections, wires to root servers of the child model (no incoming
+        dataflows within the child). For outgoing, wires from leaf servers (no outgoing
+        dataflows within the child). Falls back to the first server if none found.
+
+        When a peer appears as both incoming and outgoing (e.g. a reverse proxy that both
+        forwards requests in and receives responses out), a single ghost node is produced
+        with direction="both" so the DOT template renders it in a dedicated bidirectional
+        cluster instead of duplicating the node across the incoming and outgoing clusters.
+        """
+        if not external_connections:
+            return []
+
+        # Build intra-child sink and source sets
+        child_sinks: set = set()
+        child_sources: set = set()
+        all_server_names: List[str] = []
+        for s in getattr(threat_model, "servers", []):
+            n = s.get("name", "") if isinstance(s, dict) else getattr(s, "name", "")
+            if n:
+                all_server_names.append(n)
+        for df in getattr(threat_model, "dataflows", []):
+            src = getattr(df, "source", None)
+            snk = getattr(df, "sink", None)
+            src_n = src.name if hasattr(src, "name") else str(src)
+            snk_n = snk.name if hasattr(snk, "name") else str(snk)
+            child_sources.add(src_n)
+            child_sinks.add(snk_n)
+
+        # Prefer explicitly declared entry points (entry_point=True in DSL) over
+        # the topology heuristic (servers with no inbound / no outbound flows).
+        entry_point_names = [
+            (s.get("name", "") if isinstance(s, dict) else getattr(s, "name", ""))
+            for s in getattr(threat_model, "servers", [])
+            if (s.get("entry_point") if isinstance(s, dict) else getattr(s, "entry_point", False))
+        ]
+        entry_point_names = [n for n in entry_point_names if n]  # drop empty
+
+        if entry_point_names:
+            root_servers = entry_point_names
+            leaf_servers = entry_point_names  # same server handles bidirectional traffic
+        else:
+            root_servers = [n for n in all_server_names if n not in child_sinks] or all_server_names[:1]
+            leaf_servers = [n for n in all_server_names if n not in child_sources] or all_server_names[-1:]
+
+        # Group connections by peer so that a reverse-proxy pattern (same peer appears
+        # as both incoming and outgoing) produces a single ghost node, not two duplicates.
+        peer_info: Dict[str, Dict] = {}
+        for conn in external_connections:
+            peer = conn["peer"]
+            if peer not in peer_info:
+                peer_info[peer] = {
+                    "directions": set(),
+                    "protocols": [],
+                    "is_encrypted": False,
+                    "is_authenticated": False,
+                }
+            peer_info[peer]["directions"].add(conn["direction"])
+            proto = conn.get("protocol", "") or ""
+            if proto and proto not in peer_info[peer]["protocols"]:
+                peer_info[peer]["protocols"].append(proto)
+            peer_info[peer]["is_encrypted"] = peer_info[peer]["is_encrypted"] or bool(conn.get("is_encrypted"))
+            peer_info[peer]["is_authenticated"] = peer_info[peer]["is_authenticated"] or bool(conn.get("is_authenticated"))
+
+        ghost_nodes: List[Dict] = []
+        for peer, info in peer_info.items():
+            node_id = f"__ghost_{self._sanitize_name(peer)}"
+            enc = "🔒" if info["is_encrypted"] else ""
+            auth = "🔑" if info["is_authenticated"] else ""
+            badges = " ".join(filter(None, [enc, auth]))
+            node_label = f"{peer}{chr(10)}{badges}".strip()
+            protocol = ", ".join(info["protocols"])
+            directions = info["directions"]
+
+            if "incoming" in directions and "outgoing" in directions:
+                # Bidirectional peer: appears in BOTH the "in" cluster and the "out" cluster.
+                # "What enters the sub-model" and "what exits it" are distinct architectural
+                # concepts — a bidirectional flow creates both, shown separately.
+                for internal in root_servers:
+                    ghost_nodes.append({
+                        "node_id": node_id,
+                        "node_label": node_label,
+                        "direction": "incoming",
+                        "protocol": protocol,
+                        "internal_node": self._escape_label(internal),
+                    })
+                for internal in leaf_servers:
+                    ghost_nodes.append({
+                        "node_id": node_id,
+                        "node_label": node_label,
+                        "direction": "outgoing",
+                        "protocol": protocol,
+                        "internal_node": self._escape_label(internal),
+                    })
+            elif "incoming" in directions:
+                for internal in root_servers:
+                    ghost_nodes.append({
+                        "node_id": node_id,
+                        "node_label": node_label,
+                        "direction": "incoming",
+                        "protocol": protocol,
+                        "internal_node": self._escape_label(internal),
+                    })
+            else:
+                for internal in leaf_servers:
+                    ghost_nodes.append({
+                        "node_id": node_id,
+                        "node_label": node_label,
+                        "direction": "outgoing",
+                        "protocol": protocol,
+                        "internal_node": self._escape_label(internal),
+                    })
+        return ghost_nodes
 
     def _prepare_boundaries_data(self, threat_model) -> List[Dict]:
         """Prepares hierarchical boundary data for the Jinja2 template."""
@@ -602,7 +720,8 @@ class DiagramGenerator:
         color = info.get('color', 'lightgray')
         is_trusted = info.get('isTrusted', False)
         is_filled = info.get('isFilled', True)
-        line_style = info.get('line_style', 'solid')
+        # B1: trust-based line style default — only when not explicitly set in the DSL
+        line_style = info.get('line_style') or ('solid' if is_trusted else 'dashed')
 
         display_name = boundary_obj.name if boundary_obj and hasattr(boundary_obj, 'name') else name
         escaped_name = self._escape_label(display_name)
@@ -762,11 +881,13 @@ class DiagramGenerator:
                     edge_id = f"edge_{actual_src_id}_{actual_dst_id}"
                     edge_attributes += f', id="{edge_id}"'
 
+                    is_bidir = bool(getattr(df, "bidirectional", False))
                     key = (escaped_source, escaped_dest, protocol)
                     dataflow_map[key] = {
                         "label": label,
                         "edge_attributes": edge_attributes,
-                        "class_attribute": class_attribute
+                        "class_attribute": class_attribute,
+                        "is_bidir": is_bidir,
                     }
                 except Exception as e:
                     logging.warning(f"⚠️ Error processing dataflow: {e}")
@@ -775,7 +896,14 @@ class DiagramGenerator:
         processed = set()
         for (src, dst, proto), info in dataflow_map.items():
             direction = ""
-            if ((dst, src, proto) in dataflow_map) and ((dst, src, proto) not in processed):
+            if info.get("is_bidir"):
+                # Single flow declared bidirectional=True: render as double-headed arrow
+                label = f"{info['label']}\n↔️ Bidirectional"
+                direction = "dir=\"both\", "
+                processed.add((src, dst, proto))
+                processed.add((dst, src, proto))  # prevent reverse flow from duplicating
+            elif ((dst, src, proto) in dataflow_map) and ((dst, src, proto) not in processed):
+                # Two explicit flows A→B and B→A with same protocol: merge into one arrow
                 label = f"{info['label']}\n↔️ Bidirectional"
                 direction = "dir=\"both\", "
                 processed.add((src, dst, proto))
@@ -807,10 +935,11 @@ class DiagramGenerator:
                     used_protocols.add(protocol)
         return used_protocols
 
-    def _generate_legend_html(self, threat_model, project_protocols=None, project_protocol_styles=None) -> str:
+    def _generate_legend_html(self, threat_model, project_protocols=None, project_protocol_styles=None, show_severity_section: bool = True) -> str:
         """
         Generates HTML legend content.
         Uses project-wide protocol data if provided, otherwise falls back to the current model.
+        Pass show_severity_section=False in editor/preview context where threats have not been generated yet.
         """
         legend_items = []
 
@@ -863,10 +992,37 @@ class DiagramGenerator:
         for _, (label, color) in legend_node_types.items():
             legend_items.append(f'''<div style="display: flex; align-items: center; margin-bottom: 3px;"><div style="width: 12px; height: 8px; background-color: {color}; border: 1px solid #999; margin-right: 8px; border-radius: 2px;"></div><span style="font-size: 9px;">{label}</span></div>''')
 
-        # Boundary types legend (remains the same)
-        boundary_types = [("Trust Boundaries", "#FF0000", "3px solid"), ("Untrust Boundaries", "#000000", "1px solid")]
+        # B1: Boundary trust convention legend (green solid = trusted, red dashed = untrusted)
+        boundary_types = [
+            ("🔒 Trusted Zone",   "#2e7d32", "2px solid"),
+            ("⚠ Untrusted Zone",  "#c62828", "2px dashed"),
+        ]
         for label, color, border_style in boundary_types:
             legend_items.append(f'''<div style="display: flex; align-items: center; margin-bottom: 3px;"><div style="width: 20px; height: 15px; border: {border_style} {color}; margin-right: 8px; border-radius: 2px;"></div><span style="font-size: 11px;">{label}</span></div>''')
+
+        # B2: Severity heat-map legend (omitted in editor/preview — threats not yet generated)
+        if show_severity_section:
+            legend_items.append('<div id="severity-legend-section" style="margin-top: 5px; border-top: 1px solid #eee; padding-top: 5px;">')
+            legend_items.append('<div style="margin-bottom: 3px; font-weight: bold; font-size: 10px;">Severity Overlay:</div>')
+            severity_levels = [
+                ("Critical", "#dc2626"),
+                ("High",     "#ea580c"),
+                ("Medium",   "#d97706"),
+                ("Low",      "#16a34a"),
+            ]
+            for sev_label, sev_color in severity_levels:
+                legend_items.append(
+                    f'<div style="display:flex;align-items:center;margin-bottom:3px;">'
+                    f'<div style="width:12px;height:12px;border-radius:50%;background:{sev_color};margin-right:8px;"></div>'
+                    f'<span style="font-size:10px;">{sev_label}</span></div>'
+                )
+            legend_items.append(
+                '<div style="margin-top:4px;">'
+                '<button id="severity-overlay-btn" onclick="toggleSeverityOverlay()" '
+                'style="font-size:10px;padding:2px 7px;border:1px solid #aaa;border-radius:3px;cursor:pointer;background:#f5f5f5;">'
+                '⬤ Show Heat Map</button></div>'
+            )
+            legend_items.append('</div>')
 
         # Determine which protocol data to use
         protocol_styles_to_use = project_protocol_styles if project_protocol_styles is not None else self._get_protocol_styles_from_model(threat_model)
@@ -885,39 +1041,31 @@ class DiagramGenerator:
         
         return ''.join(legend_items)
    
-    def _generate_html_with_legend(self, svg_path: Path, html_output_path: Path, threat_model, graph_metadata: Optional[dict] = None) -> Optional[Path]:
+    def _generate_html_with_legend(self, svg_path: Path, html_output_path: Path, threat_model, graph_metadata: Optional[dict] = None, severity_map: Optional[dict] = None, report_url: str = "") -> Optional[Path]:
         """Generates HTML file with SVG and positioned legend."""
         try:
-            # Read SVG content
             with open(svg_path, 'r', encoding='utf-8') as f:
                 svg_content = f.read()
-            
-            # Generate legend HTML
             legend_html = self._generate_legend_html(threat_model)
-            
-            # Create complete HTML
-            html_content = self._create_complete_html(svg_content, legend_html, threat_model, graph_metadata)
-            
-            # Write HTML file
+            html_content = self._create_complete_html(svg_content, legend_html, threat_model, graph_metadata, severity_map, report_url)
             with open(html_output_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-            
-            
             return html_output_path
-        
         except Exception as e:
             logging.error(f"❌ Error generating HTML with legend: {e}")
-            return None   
- 
-    def _create_complete_html(self, svg_content: str, legend_html: str, threat_model, graph_metadata: Optional[dict] = None) -> str:
+            return None
+
+    def _create_complete_html(self, svg_content: str, legend_html: str, threat_model, graph_metadata: Optional[dict] = None, severity_map: Optional[dict] = None, report_url: str = "") -> str:
         """Creates the complete HTML document with SVG and legend."""
         template = self.template_env.get_template("diagram_template.html")
         model_name = threat_model.name if hasattr(threat_model, 'name') else 'Threat Model'
         return template.render(
-            title=f"Diagramme de Menaces - {model_name}",
+            title=f"Threat Diagram - {model_name}",
             svg_content=svg_content,
             legend_html=legend_html,
-            graph_metadata_json=json.dumps(graph_metadata) if graph_metadata else "{}"
+            graph_metadata_json=json.dumps(graph_metadata) if graph_metadata else "{}",
+            severity_map_json=json.dumps(severity_map or {}),
+            report_url=report_url,
         )
 
     def _get_protocol_styles_from_model(self, threat_model) -> Dict[str, Dict]:

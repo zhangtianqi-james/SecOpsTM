@@ -47,6 +47,10 @@ class ModelParser:
             "SECRET": Classification.SECRET,
             "TOP_SECRET": Classification.TOP_SECRET,
             "RESTRICTED": Classification.RESTRICTED,
+            "SENSITIVE": Classification.SENSITIVE,
+            # Common aliases
+            "CONFIDENTIAL": Classification.SENSITIVE,  # CONFIDENTIAL ≈ SENSITIVE in pytm
+            "INTERNAL": Classification.RESTRICTED,
         }
 
         self.lifetime_map = {
@@ -65,6 +69,9 @@ class ModelParser:
         """
         lines = markdown_content.splitlines()
         
+        # Pass 0: Parse ## Context (standalone key=value block, no list items)
+        self._parse_context_section(lines)
+
         # First Pass: Parse Boundaries, Actors, Servers, and Data
         element_sections = {
             "## Boundaries": self._parse_boundary,
@@ -193,7 +200,7 @@ class ModelParser:
         business_value = server_kwargs.pop('businessValue', None)
 
         self.threat_model.add_server(name, boundary_name=boundary_name, business_value=business_value, **server_kwargs)
-        logging.info(f"   - Added Server: {name} (Boundary: {boundary_name}, Props: {server_kwargs}, Business Value: {business_value})")
+        logging.debug(f"   - Added Server: {name} (Boundary: {boundary_name}, Props: {server_kwargs}, Business Value: {business_value})")
             
     def _parse_key_value_params(self, params_str: str) -> Dict[str, Any]:
         """
@@ -268,16 +275,27 @@ class ModelParser:
             if enum_str not in self.classification_map:
                 logging.warning(f"⚠️ Warning: Classification '{enum_str}' not recognized for Data '{name}'. Set to UNKNOWN.")
 
-        if "credentialsLife" in data_kwargs and isinstance(data_kwargs["credentialsLife"], str):
-            enum_str = data_kwargs["credentialsLife"].upper()
-            data_kwargs["credentialsLife"] = self.lifetime_map.get(enum_str, Lifetime.UNKNOWN)
-            if enum_str not in self.lifetime_map:
-                logging.warning(f"⚠️ Warning: Lifetime '{enum_str}' not recognized for Data '{name}'. Set to UNKNOWN.")
+        if "credentialsLife" in data_kwargs:
+            raw_cl = data_kwargs["credentialsLife"]
+            if isinstance(raw_cl, Lifetime):
+                pass  # already the right type
+            elif isinstance(raw_cl, str):
+                enum_str = raw_cl.upper()
+                data_kwargs["credentialsLife"] = self.lifetime_map.get(enum_str, Lifetime.UNKNOWN)
+                if enum_str not in self.lifetime_map:
+                    logging.warning(f"⚠️ Warning: Lifetime '{raw_cl}' not recognized for Data '{name}'. Set to UNKNOWN.")
+            else:
+                # integer or other non-string — discard to avoid pytm TypeError
+                logging.warning(
+                    f"⚠️ Warning: credentialsLife for Data '{name}' has a non-string value ({raw_cl!r}). "
+                    "Use a Lifetime keyword (NONE, SHORT, LONG, AUTO, MANUAL, HARDCODED). Defaulting to NONE."
+                )
+                data_kwargs["credentialsLife"] = Lifetime.NONE
             
         self.threat_model.add_data(name, **data_kwargs)
         
         params_display = [f"{key}: {value.name if hasattr(value, 'name') else value}" for key, value in data_kwargs.items()]
-        logging.info(f"   - Added Data: {name} ({', '.join(params_display)})")
+        logging.debug(f"   - Added Data: {name} ({', '.join(params_display)})")
 
     def _parse_dataflow(self, name: str, params_str: str):
         """Parses a dataflow from a name and a parameter string (can be multi-line)."""
@@ -303,7 +321,7 @@ class ModelParser:
 
         if from_elem and to_elem:
             self.threat_model.add_dataflow(from_elem, to_elem, name, **params)
-            logging.info(f"   - Added Dataflow: {name} ({from_name_raw} -> {to_name_raw}, Props: {params})")
+            logging.debug(f"   - Added Dataflow: {name} ({from_name_raw} -> {to_name_raw}, Props: {params})")
         else:
             logging.warning(f"⚠️ Warning: Elements for dataflow '{name}' not found. From: '{from_name_raw}', To: '{to_name_raw}'.")
             
@@ -315,7 +333,7 @@ class ModelParser:
         self.threat_model.add_protocol_style(name, **style_kwargs)
         
         params_display = [f"{key}: {value}" for key, value in style_kwargs.items()]
-        logging.info(f"   - Added Protocol Style: {name} ({', '.join(params_display)})")
+        logging.debug(f"   - Added Protocol Style: {name} ({', '.join(params_display)})")
 
     def _parse_severity_multiplier(self, name: str, params_str: str):
         """Parses a severity multiplier from a name and a value string."""
@@ -323,9 +341,50 @@ class ModelParser:
         try:
             multiplier = float(params_str)
             self.threat_model.add_severity_multiplier(name, multiplier)
-            logging.info(f"   - Added Severity Multiplier: {name} = {multiplier}")
+            logging.debug(f"   - Added Severity Multiplier: {name} = {multiplier}")
         except (ValueError, TypeError):
             logging.warning(f"⚠️ Warning: Malformed severity multiplier value for '{name}': {params_str}")
+
+    def _parse_context_section(self, lines: List[str]) -> None:
+        """Pass 0: parse the ## Context section into threat_model.context_config.
+
+        Accepts two syntaxes per line (after the section header):
+          key=value
+          - key=value
+          - key: value
+
+        Values are coerced: "true"/"false" → bool, numeric strings → float/int,
+        everything else stays a string.
+        """
+        in_context = False
+        kv_re = re.compile(r'^-?\s*([A-Za-z_][A-Za-z0-9_]*)[\s=:]+(.+)$')
+        for line in lines:
+            stripped = line.strip()
+            if stripped == "## Context":
+                in_context = True
+                continue
+            if in_context:
+                if stripped.startswith("## "):
+                    break  # next section
+                if not stripped or stripped.startswith("#"):
+                    continue
+                m = kv_re.match(stripped)
+                if m:
+                    key, raw = m.group(1).strip(), m.group(2).strip().strip('"').strip("'")
+                    if raw.lower() == "true":
+                        val: Any = True
+                    elif raw.lower() == "false":
+                        val = False
+                    else:
+                        try:
+                            val = int(raw)
+                        except ValueError:
+                            try:
+                                val = float(raw)
+                            except ValueError:
+                                val = raw
+                    self.threat_model.context_config[key] = val
+                    logging.info("Context: %s = %r", key, val)
 
     def _parse_custom_mitre(self, name: str, params_str: str):
         """Parses a custom MITRE mapping from a name and a parameter string."""
@@ -336,6 +395,6 @@ class ModelParser:
             tactics = mapping_dict.get('tactics', [])
             techniques = mapping_dict.get('techniques', [])
             self.threat_model.add_custom_mitre_mapping(name, tactics, techniques)
-            logging.info(f"   - Added Custom MITRE Mapping: {name} (Tactics: {len(tactics)}, Techniques: {len(techniques)})")
+            logging.debug("Custom MITRE mapping added: %s (tactics: %d, techniques: %d)", name, len(tactics), len(techniques))
         except (SyntaxError, ValueError, AttributeError) as e: # Added AttributeError for safety
             logging.error(f"Error evaluating custom MITRE mapping for '{name}': {e}")

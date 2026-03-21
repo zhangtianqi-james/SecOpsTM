@@ -28,17 +28,17 @@
     <link rel="stylesheet" href="/static/css/graphical_editor_style.css">
 </head>
 <body>
-    <script type="text/javascript" src="/static/js/dark_mode.js"></script>
-    <script type="text/javascript" src="/static/js/service_worker_registration.js"></script>
-    <script type="text/javascript" src="/static/js/KonvaManager.js"></script>
-    <script type="text/javascript" src="/static/js/NodeManager.js"></script>
-    <script type="text/javascript" src="/static/js/ConnectionManager.js"></script>
-    <script type="text/javascript" src="/static/js/PropertiesPanelManager.js"></script>
-    <script type="text/javascript" src="/static/js/ToolbarManager.js"></script>
-    <script type="text/javascript" src="/static/js/ThreatModelGenerator.js"></script>
-    <script type="text/javascript" src="/static/js/UIManager.js"></script>
-    <script type="text/javascript" src="/static/js/ModelManager.js"></script>
-    <script type="text/javascript" src="/static/js/app.js"></script>
+    <script type="text/javascript" src="/static/js/dark_mode.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/service_worker_registration.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/KonvaManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/NodeManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/ConnectionManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/PropertiesPanelManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/ToolbarManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/ThreatModelGenerator.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/UIManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/ModelManager.js?v=1.1"></script>
+    <script type="text/javascript" src="/static/js/app.js?v=1.1"></script>
     <div class="header">
         <h1>Graphical Editor</h1>
         <div class="button-group">
@@ -255,5 +255,38 @@
             <button id="new-data-item-btn">Clear Form</button>
         </div>
     </div>
+    <script>
+        // AI Status real-time update
+        (function() {
+            const eventSource = new EventSource('/api/ai_status_stream');
+            const aiButton = document.getElementById('analyze-btn');
+
+            eventSource.addEventListener('ai_status', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('AI status update received:', data);
+                    
+                    if (data.ai_online) {
+                        if (aiButton) {
+                            aiButton.disabled = false;
+                            aiButton.title = 'Generate artifacts and enrich with AI';
+                        }
+                    } else {
+                        // We don't disable analyze-btn completely because it also does non-AI generation
+                        // but we could change its title or indicate AI is missing.
+                        if (aiButton) {
+                            aiButton.title = 'Generate (AI features offline)';
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to parse AI status event:", e);
+                }
+            });
+
+            eventSource.onerror = function(err) {
+                console.error('EventSource connection failed:', err);
+            };
+        })();
+    </script>
 </body>
 </html>

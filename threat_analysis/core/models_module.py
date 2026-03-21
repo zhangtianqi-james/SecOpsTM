@@ -15,6 +15,7 @@
 """
 Threat Model Definition Module with MITRE ATT&CK Integration
 """
+import pytm # Add import for pytm module (moved to top)
 from pytm import TM, Boundary, Actor, Server, Dataflow, Data, Classification, Lifetime
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple
@@ -22,16 +23,24 @@ import logging
 from enum import Enum
 from pathlib import Path
 
-# Patch pytm.Boundary to ensure it has all necessary custom attributes
-if not hasattr(Boundary, 'isTrusted'):
-    original_boundary_init = Boundary.__init__
-    def new_boundary_init(self, *args, **kwargs):
-        original_boundary_init(self, *args, **kwargs)
-        self.protocol = ""
-        self.port = "" # Initialize port
-        self.data = [] # Initialize data as a list
-        self.isTrusted = False # Default value
-    Boundary.__init__ = new_boundary_init
+class SecOpsBoundary(Boundary):
+    """
+    Subclass of pytm.Boundary that adds the extra attributes required by SecOpsTM
+    (isTrusted, protocol, port, data). Using a subclass instead of monkey-patching
+    pytm.Boundary directly makes the code resilient to pytm upgrades: pytm's own
+    __init__ is called normally via super(), and SecOpsTM attributes are added
+    afterwards in a controlled way.
+
+    isinstance(SecOpsBoundary(...), pytm.Boundary) is True, so all pytm internals
+    (TM._boundaries list, rule engine, DFD rendering) treat these objects normally.
+    """
+
+    def __init__(self, name: str, **kwargs):
+        super().__init__(name, **kwargs)
+        self.isTrusted: bool = False
+        self.protocol: str = ""
+        self.port: str = ""
+        self.data: list = []
 
 from .mitre_mapping_module import MitreMapping
 from threat_analysis.severity_calculator_module import SeverityCalculator
@@ -54,6 +63,23 @@ class CustomThreat:
     def __str__(self):
         return self.name
 
+class ExtendedThreat(pytm.Threat): # Inherit from pytm.Threat
+    """
+    Extends pytm.Threat to include a source attribute,
+    allowing us to track where the threat was generated (e.g., pytm, LLM).
+    """
+    def __init__(self, *args, source: str = "pytm", **kwargs):
+        # Capture before super() call, then re-apply after — pytm.Threat.__init__
+        # may overwrite self.category via its own attribute machinery.
+        _category = kwargs.get('category') or kwargs.get('stride_category') or 'Unknown'
+        super().__init__(*args, **kwargs)
+        # Re-apply after super() so pytm cannot clobber our value.
+        self.category = _category
+        self.stride_category = _category
+        self.source = source
+
+    def __repr__(self):
+        return f"ExtendedThreat(source='{self.source}', description='{self.description}', category='{self.category}')"
 
 class ThreatModel:
     """Main class for managing the threat model with MITRE ATT&CK integration"""
@@ -90,8 +116,14 @@ class ThreatModel:
             raise ValueError("A CVEService instance must be provided to ThreatModel.")
         self.cve_service = cve_service
         self.sub_models = []
+        # Populated by ModelParser when a ## Context section is present
+        self.context_config: Dict[str, Any] = {}
+        # Set by model_factory when loading from a file path
+        self._model_file_path: Optional[str] = None
+        # Populated by ExportService after GDAFEngine.run() — displayed in the HTML report
+        self.gdaf_scenarios: List[Any] = []
 
-    def add_boundary(self, name: str, color: str = "lightgray", parent_boundary_obj: Optional[Boundary] = None, business_value: Optional[str] = None, **kwargs) -> Boundary:
+    def add_boundary(self, name: str, color: str = "lightgray", parent_boundary_obj: Optional[Boundary] = None, business_value: Optional[str] = None, **kwargs) -> SecOpsBoundary:
         """Adds a boundary to the model with additional properties, including an optional parent.
 
         Args:
@@ -104,18 +136,8 @@ class ThreatModel:
         Returns:
             Boundary: The created Boundary object.
         """
-        boundary = Boundary(name)
-
-        # Explicitly set isTrusted on the pytm.Boundary object if provided in kwargs
-        if 'isTrusted' in kwargs:
-        # HACK: Add dummy attributes to Boundary objects to allow them to be
-        # used as sources/sinks in Dataflows. The underlying pytm library
-        # expects these attributes to exist on dataflow endpoints, which
-        # this patch provides.
-            setattr(boundary, 'isTrusted', kwargs.get('isTrusted', False))
-        setattr(boundary, 'protocol', "")
-        setattr(boundary, 'port', None)
-        setattr(boundary, 'data', None)
+        boundary = SecOpsBoundary(name)
+        boundary.isTrusted = kwargs.get('isTrusted', False)
 
         if parent_boundary_obj:
             boundary.inBoundary = parent_boundary_obj
@@ -164,7 +186,7 @@ class ThreatModel:
         """
         data_obj = Data(name, **kwargs)  # Passes **kwargs to the Data constructor
         self.data_objects[name.lower()] = data_obj
-        logging.info(f"   - Added Data: {name} (Props: {kwargs})")  # Debugging
+        logging.debug(f"   - Added Data: {name} (Props: {kwargs})")  # Debugging
         logging.debug(f"DEBUG: Data object added with name: '{name}'") # New debug log
         return data_obj
 
@@ -226,7 +248,7 @@ class ThreatModel:
             add_protocol_style("HTTP", color="red", line_style="dashed", width=1)
         """
         self.protocol_styles[protocol_name] = style_kwargs
-        logging.info(f"✅ Protocol style added for {protocol_name}: {style_kwargs}")
+        logging.debug("Protocol style added for %s: %s", protocol_name, style_kwargs)
 
     def get_protocol_style(self, protocol_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -274,19 +296,24 @@ class ThreatModel:
 
         self.tm.process()
 
-        pytm_raw_threats = []
-        try:
-            pytm_raw_threats = self.tm._threats
-        except AttributeError:
-            logging.warning("⚠️ Could not retrieve PyTM threats from tm._threats.")
-
-        # --- Post-processing: expand class targets to all instances ---
-        expanded_pytm_threats = self._expand_class_targets(pytm_raw_threats)
+        # Use tm.findings (condition-matched, per-element) rather than tm._threats
+        # (raw definitions with unresolved class-tuple targets that produce nonsense entries).
+        expanded_pytm_threats: List[Tuple[Any, Any]] = []
+        findings = getattr(self.tm, 'findings', []) or []
+        for finding in findings:
+            element = getattr(finding, 'element', None)
+            if element is not None:
+                expanded_pytm_threats.append((finding, element))
+        if expanded_pytm_threats:
+            logging.info(f"Loaded {len(expanded_pytm_threats)} pytm findings.")
+        else:
+            logging.debug("No pytm findings matched (conditions not met or model too minimal). "
+                          "Custom THREAT_RULES will cover threat generation.")
 
         # --- Generate and add custom threats ---
         custom_threats_tuples = self._apply_custom_threats()
 
-        # Combine filtered PyTM threats with custom threats
+        # Combine pytm findings with custom threats
         self.threats_raw = expanded_pytm_threats + custom_threats_tuples
 
         # Normalization and grouping of threats
@@ -366,20 +393,32 @@ class ThreatModel:
         
         return expanded_threats
 
+    # Valid STRIDE categories — threats outside this set are excluded from grouping.
+    _VALID_STRIDE_CATEGORIES: frozenset = frozenset({
+        'Spoofing', 'Tampering', 'Repudiation',
+        'Information Disclosure', 'Denial of Service', 'Elevation of Privilege',
+    })
+
     def _group_threats(self) -> Dict[str, List[Tuple[Any, Any]]]:
-        """Groups threats by type, skipping threats with unresolved targets."""
-        grouped = defaultdict(list)
+        """Groups threats by STRIDE category, keeping only the 6 canonical categories."""
+        grouped: Dict[str, List] = defaultdict(list)
 
         for t in self.threats_raw:
-            # threats_raw should now consistently contain (threat, target) tuples
             threat, target = t
 
-            # Filter out threats with unresolved targets if necessary (e.g., target is None)
+            # Skip threats with unresolved targets
             if target is None or (isinstance(target, tuple) and any(x is None for x in target)):
                 continue
 
-            # Use the stride_category from the threat object if available, otherwise infer from class name
-            stride_category = getattr(threat, 'stride_category', str(threat.__class__.__name__))
+            # Resolve stride_category: explicit attr → MITRE keyword classification → skip
+            stride_category = getattr(threat, 'stride_category', None)
+            if not stride_category or stride_category not in self._VALID_STRIDE_CATEGORIES:
+                # Try description-based keyword classification (handles pytm Finding objects)
+                stride_category = self.mitre_mapper.classify_pytm_threat(threat)
+
+            if stride_category not in self._VALID_STRIDE_CATEGORIES:
+                continue  # Drop threats that can't be mapped to a STRIDE category
+
             grouped[stride_category].append((threat, target))
 
         return grouped

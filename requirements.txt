@@ -1,6 +1,24 @@
-pytm==1.3.1
-Flask==3.1.1
-Jinja2==3.1.6
-pandas==2.3.0
+# Full pinned dependency list for SecOpsTM (including AI/ML extras).
+# For core-only install: pip install -e .
+# For AI features:       pip install -r requirements.txt
+# See pyproject.toml [project.optional-dependencies] for the curated ai extras group.
+pytm>=1.3.1
+Flask[async]>=3.1.1
+openpyxl>=3.1.0
+Jinja2>=3.1.6
+pandas>=2.3.0
 PyYAML>=6.0.1
-graphviz==0.21
+graphviz>=0.21
+aiohttp>=3.9.1
+langchain>=0.1.16
+langchain-community>=0.0.33
+litellm>=1.32.2
+chromadb>=0.4.24
+sentence-transformers>=2.7.0
+lxml>=5.2.2
+jq>=1.7.0
+unstructured[all]>=0.14.0
+langchain-huggingface>=0.0.3
+msoffcrypto-tool>=5.0.0
+langchain-chroma>=0.1.2
+langchain-litellm>=0.1.0

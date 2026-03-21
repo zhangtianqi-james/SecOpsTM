@@ -278,15 +278,54 @@
             display: flex;
             flex-direction: column;
             flex-grow: 1;
+            min-height: 0;
         }
+        .tab-bar-wrapper {
+            display: flex;
+            align-items: stretch;
+            border-bottom: 1px solid #d1d5da;
+            background-color: #f0f2f5;
+            flex-shrink: 0;
+            position: relative;
+        }
+        body.dark-mode .tab-bar-wrapper {
+            border-bottom-color: #444;
+            background-color: #1a1a1a;
+        }
+        .tab-bar-scroll-btn {
+            flex-shrink: 0;
+            width: 22px;
+            background: none;
+            border: none;
+            border-bottom: none;
+            cursor: pointer;
+            font-size: 12px;
+            color: #666;
+            padding: 0;
+            display: none; /* shown by JS when overflow detected */
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+        body.dark-mode .tab-bar-scroll-btn { color: #aaa; }
+        .tab-bar-scroll-btn:hover { color: #0366d6; background: rgba(0,0,0,.05); }
+        body.dark-mode .tab-bar-scroll-btn:hover { color: #58a6ff; }
         .tab-bar {
             display: flex;
-            border-bottom: 1px solid #d1d5da;
+            flex: 1 1 auto;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;          /* Firefox */
+            scrollbar-color: #c1c1c1 transparent;
+            scroll-behavior: smooth;
         }
-        body.dark-mode .tab-bar {
-            border-bottom-color: #444;
-        }
+        .tab-bar::-webkit-scrollbar { height: 3px; }
+        .tab-bar::-webkit-scrollbar-track { background: transparent; }
+        .tab-bar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 2px; }
+        body.dark-mode .tab-bar { scrollbar-color: #555 transparent; }
+        body.dark-mode .tab-bar::-webkit-scrollbar-thumb { background: #555; }
         .tab-button {
+            flex-shrink: 0;
             padding: 10px 15px;
             cursor: pointer;
             border: none;
@@ -294,6 +333,7 @@
             border-bottom: 1px solid #d1d5da;
             margin-bottom: -1px;
             position: relative;
+            white-space: nowrap;
         }
         body.dark-mode .tab-button {
             background-color: #1a1a1a;
@@ -499,6 +539,148 @@
             /* No conflicting fill/stroke here */
         }
 
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 700px;
+            height: auto;
+            min-height: 200px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+            resize: both;
+            overflow: auto;
+        }
+        body.dark-mode .modal-content {
+            background-color: #3a3a3a;
+            border-color: #555;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        body.dark-mode .modal-header {
+            border-bottom-color: #555;
+        }
+        .modal-header h2 {
+            margin: 0;
+        }
+        .close-button {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+        }
+        body.dark-mode .close-button {
+            color: #ccc;
+        }
+        body.dark-mode .close-button:hover,
+        body.dark-mode .close-button:focus {
+            color: white;
+        }
+        #prompt-textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+        body.dark-mode #prompt-textarea {
+            background-color: #2a2a2a;
+            border-color: #555;
+            color: #e0e0e0;
+        }
+        #generate-from-prompt-btn {
+            background-color: #2c974b;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #generate-from-prompt-btn:hover {
+            background-color: #278341;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        body.dark-mode button:disabled {
+            background-color: #555;
+            color: #aaa;
+        }
+        /* DSL validation banner */
+        #dsl-validation-banner {
+            margin: 4px 0 0 0;
+            padding: 6px 12px;
+            font-size: 12px;
+            border-left: 3px solid;
+            border-radius: 0 3px 3px 0;
+        }
+        .validation-banner.error {
+            background: #fff0f0;
+            border-color: #c62828;
+            color: #c62828;
+        }
+        .validation-banner.warning {
+            background: #fffbe6;
+            border-color: #f57c00;
+            color: #7a5000;
+        }
+        body.dark-mode .validation-banner.error {
+            background: #3a1a1a;
+            color: #ff8a80;
+            border-color: #ff5252;
+        }
+        body.dark-mode .validation-banner.warning {
+            background: #2a2000;
+            color: #ffcc80;
+            border-color: #ffab40;
+        }
+        /* DSL inline squiggles */
+        .cm-dsl-error {
+            text-decoration: underline wavy #c62828;
+            text-decoration-skip-ink: none;
+        }
+        .cm-dsl-warning {
+            text-decoration: underline wavy #f57c00;
+            text-decoration-skip-ink: none;
+        }
+        /* DSL component count badge */
+        #dsl-component-count {
+            font-size: 11px;
+            color: #666;
+            margin-left: 8px;
+            white-space: nowrap;
+        }
+        body.dark-mode #dsl-component-count { color: #aaa; }
     </style>
     <script src="/static/js/split.min.js"></script>
     <script src="/static/js/svg-pan-zoom.min.js"></script>
@@ -511,22 +693,21 @@
         <h1>Threat Model Editor <span style="font-size: 0.6em;">- Main Model</span></h1>
         <div class="menu-bar">
             <div class="dropdown">
-                <button class="dropbtn">📁 File</button>
+                <button class="dropbtn">📁 Threat Model</button>
                 <div class="dropdown-content">
+                    <button id="new-btn">✨ New TM</button>
+                    <button id="ai-generate-btn" {% if not ai_online %}disabled{% endif %} title="{% if not ai_online %}AI server is offline{% endif %}">🤖 Create/update TM with AI</button>
+                    <button onclick="TabManager.addSubmodel()">➕ Add Sub-model</button>
+                    <hr style="margin: 4px 10px; border: 0; border-top: 1px solid #eee;">
                     <button onclick="document.getElementById('loadFileInput').click()">📥 Load Model (.md)</button>
                     <input type="file" id="loadFileInput" accept=".md" style="display: none;" onchange="loadMarkdownFile(event)">
-                    <button onclick="TabManager.loadProject()">📂 Load Project</button>
-                    <button onclick="TabManager.clearAllTabs()">🗑️ Clear All</button>
-                    <button onclick="saveProjectToServer()">💾 Save Project to Server</button>
-                </div>
-            </div>
-            <div class="menu-separator"></div>
-            <div class="dropdown">
-                <button class="dropbtn">Submodel</button>
-                <div class="dropdown-content">
-                    <button onclick="TabManager.addSubmodel()">➕ Add Sub-model</button>
                     <button onclick="TabManager.triggerLoadSubmodel()">📂 Load Sub-model</button>
                     <input type="file" id="loadSubmodelInput" accept=".md" style="display: none;" onchange="TabManager.loadSubmodel(event)">
+                    <button onclick="TabManager.loadProject()">📂 Load Project</button>
+                    <span id="project-load-badges" style="font-size:11px; margin-left:2px;"></span>
+                    <hr style="margin: 4px 10px; border: 0; border-top: 1px solid #eee;">
+                    <button onclick="saveProjectToServer()">💾 Save Project to Server</button>
+                    <button onclick="TabManager.clearAllTabs()">🗑️ Clear All</button>
                 </div>
             </div>
             <div class="menu-separator"></div>
@@ -547,6 +728,13 @@
             </div>
         </div>
     </div>
+    
+    <div id="progress-container" style="display: none; padding: 10px;">
+        <div style="font-weight: bold; margin-bottom: 5px;">Generation in progress...</div>
+        <div id="progress-bar-container" style="background-color: #ddd; border-radius: 4px;">
+            <div id="progress-bar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 4px; text-align: center; color: white; line-height: 20px;">0%</div>
+        </div>
+    </div>
 
     <div class="error-message" id="errorMessage"></div>
 
@@ -554,7 +742,15 @@
         <div id="editor-split" class="editor-pane">
             <div id="drop-overlay" class="drop-overlay">Drop .md file here to load</div>
             <div class="tab-container">
-                <div class="tab-bar" id="tab-bar"></div>
+                <div class="tab-bar-wrapper" id="tab-bar-wrapper">
+                    <button class="tab-bar-scroll-btn" id="tab-scroll-left" title="Scroll tabs left" onclick="TabBar.scrollLeft()">&#8249;</button>
+                    <div class="tab-bar" id="tab-bar"></div>
+                    <button class="tab-bar-scroll-btn" id="tab-scroll-right" title="Scroll tabs right" onclick="TabBar.scrollRight()">&#8250;</button>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:4px;">
+                    <div id="dsl-validation-banner" style="display:none;flex:1;" aria-live="polite"></div>
+                    <span id="dsl-component-count"></span>
+                </div>
                 <div class="tab-content-area" id="tab-content-area"></div>
             </div>
         </div>
@@ -571,18 +767,36 @@
         </div>
     </div>
 
+   <!-- AI Prompt Modal -->
+   <div id="ai-prompt-modal" class="modal">
+       <div class="modal-content">
+           <div class="modal-header">
+               <h2>Generate Threat Model with AI</h2>
+               <span class="close-button">&times;</span>
+           </div>
+           <p>Enter a description of your system, and the AI will generate a threat model for you.</p>
+           <textarea id="prompt-textarea" placeholder="e.g., A simple web application with a frontend, a backend API, and a PostgreSQL database."></textarea>
+           <div class="modal-footer" style="padding-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
+               <button id="close-from-footer-btn" class="menu-button" style="background-color: #f44336; margin-left: 0;">Close</button>
+               <button id="generate-from-prompt-btn">Generate</button>
+           </div>
+       </div>
+   </div>
+
     <script>
         let panZoomInstance;
         let debounceTimer;
+        let _validateTimer = null;
         const svgContainer = document.getElementById('svg-container');
         const svgWrapper = document.getElementById('svg-wrapper');
         const legendContainer = document.getElementById('legend-container');
         const errorMessageDiv = document.getElementById('errorMessage');
-        let protocolVisibilityState = {};
-        
-        // Global variables for graph interaction
-        let globalGraphMetadata = null;
+        const aiButton = document.getElementById('ai-generate-btn');
+
+        let protocolVisibilityState = {}; // Stores { 'protocol_name': 'hidden' / 'visible' }
         let currentlySelectedElementId = null;
+        let globalGraphMetadata = null;
+
 
         // Function to apply highlighting
         function highlightElement(elementId) {
@@ -681,9 +895,40 @@
             currentlySelectedElementId = null;
         }
 
+        // --- Tab bar scroll navigation ---
+        const TabBar = {
+            _bar: null,
+            _leftBtn: null,
+            _rightBtn: null,
+            init() {
+                this._bar = document.getElementById('tab-bar');
+                this._leftBtn = document.getElementById('tab-scroll-left');
+                this._rightBtn = document.getElementById('tab-scroll-right');
+                this._bar.addEventListener('scroll', () => this.updateButtons());
+                new ResizeObserver(() => this.updateButtons()).observe(this._bar);
+            },
+            updateButtons() {
+                const b = this._bar;
+                if (!b) return;
+                const hasOverflow = b.scrollWidth > b.clientWidth + 1;
+                // Show left button only when scrolled right; show right button when overflow exists and not at end
+                this._leftBtn.style.display  = (hasOverflow && b.scrollLeft > 0) ? 'flex' : 'none';
+                this._rightBtn.style.display = hasOverflow ? 'flex' : 'none';
+            },
+            scrollLeft()  { this._bar.scrollBy({ left: -120, behavior: 'smooth' }); },
+            scrollRight() { this._bar.scrollBy({ left:  120, behavior: 'smooth' }); },
+            scrollToActive() {
+                if (!this._bar) return;
+                const active = this._bar.querySelector('.tab-button.active');
+                if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                this.updateButtons();
+            },
+        };
+
         const TabManager = {
             editors: [],
             tabCount: 0,
+            extraFiles: [],
 
             init: function() {
                 const models = JSON.parse(atob("{{ initial_models | e }}"));
@@ -720,6 +965,7 @@
                 }
                 tabButton.onclick = () => this.switchTab(tabIndex);
                 tabBar.appendChild(tabButton);
+                TabBar.updateButtons();
 
                 // Create Tab Pane
                 const tabPane = document.createElement('div');
@@ -737,10 +983,16 @@
                     lineNumbers: true,
                     lineWrapping: true,
                 });
+                    // Set initial markdown content from server
+                const initialMarkdown = {{ initial_markdown | safe }};
+                const defaultEmptyMarkdown = {{ DEFAULT_EMPTY_MARKDOWN | safe }};
+                editor.setValue(initialMarkdown);
                 editor.setValue(content);
                 editor.on('change', () => {
                     clearTimeout(debounceTimer);
                     debounceTimer = setTimeout(updatePreview, 500);
+                    clearTimeout(_validateTimer);
+                    _validateTimer = setTimeout(validateDSL, 800);
                 });
 
                 this.editors[tabIndex] = { editor, path, tabButton, tabPane };
@@ -791,6 +1043,7 @@
                 if (this.editors[tabIndex]) {
                     this.editors[tabIndex].editor.refresh();
                 }
+                TabBar.scrollToActive();
                 updatePreview();
             },
 
@@ -848,33 +1101,37 @@
                }
            },
 
-            getActiveEditor: function() {
+            getActiveEditorData: function() {
                 const activeTab = document.querySelector('.tab-button.active');
                 if (activeTab) {
                     const tabIndex = parseInt(activeTab.dataset.tabIndex, 10);
-                    return this.editors[tabIndex]?.editor;
+                    return this.editors[tabIndex];
                 }
                 return null;
             },
 
+            getActiveEditor: function() {
+                return this.getActiveEditorData()?.editor;
+            },
+
             getAllData: function() {
-                const activeEditor = this.getActiveEditor();
-                if (!activeEditor) {
-                    return { mainModelContent: '', submodels: [] };
+                const activeEditorData = this.getActiveEditorData();
+                if (!activeEditorData) {
+                    return { mainModelContent: '', mainModelPath: 'main.md', submodels: [] };
                 }
-                const mainModelContent = activeEditor.getValue();
+                const mainModelContent = activeEditorData.editor.getValue();
+                const mainModelPath = activeEditorData.path;
                 const submodels = [];
-                // This logic might need adjustment depending on how submodels are identified.
-                // For now, we'll consider all *other* tabs as potential submodels.
+                // Gather all other tabs
                 this.editors.forEach((editorData, index) => {
-                    if (editorData && editorData.editor !== activeEditor) {
+                    if (editorData && editorData.editor !== activeEditorData.editor) {
                         submodels.push({
                             path: editorData.path,
                             content: editorData.editor.getValue()
                         });
                     }
                 });
-                return { mainModelContent, submodels };
+                return { mainModelContent, mainModelPath, submodels };
             },
 
             triggerLoadSubmodel: function() {
@@ -910,76 +1167,75 @@
 
             loadProject: async function() {
                 try {
-                    // Use the File System Access API to open a directory
                     const dirHandle = await window.showDirectoryPicker();
                     const models = [];
+                    const extraFiles = []; // BOM/*.yaml, context/*.yaml, etc.
 
-                    // Recursively read files from the selected directory
-                    async function processDirectory(directoryHandle) {
-                        for await (const entry of directoryHandle.values()) {
-                            if (entry.kind === 'file' && (entry.name.endsWith('.md'))) {
-                                const file = await entry.getFile();
-                                const content = await file.text();
-                                // Create a relative path from the project root
-                                const rootPath = dirHandle.name;
-                                let relativePath = file.name; // Fallback
-                                try {
-                                    // This is a bit of a trick to get a relative path, might not be perfect
-                                    const fullPathParts = await dirHandle.resolve(entry);
-                                    if (fullPathParts) {
-                                       relativePath = fullPathParts.join('/');
+                    async function processDirectory(handle, relPath) {
+                        for await (const entry of handle.values()) {
+                            const entryRel = relPath ? `${relPath}/${entry.name}` : entry.name;
+                            if (entry.kind === 'file') {
+                                const name = entry.name.toLowerCase();
+                                if (name.endsWith('.md')) {
+                                    const file = await entry.getFile();
+                                    models.push({ path: entryRel, content: await file.text() });
+                                } else if (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json')) {
+                                    // Only include files inside BOM/ or context/ directories
+                                    const parts = entryRel.split('/');
+                                    const inBomOrContext = parts.some(p => p === 'BOM' || p === 'context');
+                                    if (inBomOrContext) {
+                                        const file = await entry.getFile();
+                                        extraFiles.push({ path: entryRel, content: await file.text() });
                                     }
-                                } catch(e) { console.warn("Could not resolve file path, using name as fallback.", e); }
-                                
-                                models.push({
-                                    path: relativePath,
-                                    content: content
-                                });
+                                }
                             } else if (entry.kind === 'directory') {
-                                await processDirectory(entry);
+                                await processDirectory(entry, entryRel);
                             }
                         }
                     }
 
-                    await processDirectory(dirHandle);
+                    await processDirectory(dirHandle, '');
 
                     if (models.length === 0) {
-                        alert('No markdown files (.md) found in the selected directory or its subdirectories.');
+                        alert('No markdown files (.md) found in the selected directory.');
                         return;
                     }
 
+                    // Store extra files for use in generate_all
+                    TabManager.extraFiles = extraFiles;
+
                     // Clear existing tabs
                     this.editors.forEach((editorData, index) => {
-                        if (editorData) {
-                            editorData.tabButton.remove();
-                            editorData.tabPane.remove();
-                            this.editors[index] = null;
-                        }
+                        if (editorData) { editorData.tabButton.remove(); editorData.tabPane.remove(); this.editors[index] = null; }
                     });
-                    this.editors = []; // Reset the array
+                    this.editors = [];
                     this.tabCount = 0;
                     document.getElementById('tab-bar').innerHTML = '';
                     document.getElementById('tab-content-area').innerHTML = '';
 
-
-                    // Add new tabs for the loaded project
+                    // Add tabs for .md files
                     models.forEach((model, index) => {
                         this.addTab(model.path, model.content, index !== 0 || models.length > 1);
                     });
-                    
-                    if (models.length > 0) {
-                        this.switchTab(0); // Switch to the first tab
+                    if (models.length > 0) this.switchTab(0);
+
+                    // Show BOM/context badges
+                    const hasBom = extraFiles.some(f => f.path.includes('/BOM/') || f.path.startsWith('BOM/'));
+                    const hasContext = extraFiles.some(f => f.path.includes('/context/') || f.path.startsWith('context/'));
+                    const badgesEl = document.getElementById('project-load-badges');
+                    if (badgesEl) {
+                        const badges = [];
+                        if (hasBom) badges.push('<span style="background:#e8f5e9;color:#2e7d32;padding:2px 5px;border-radius:3px;border:1px solid #2e7d32;">BOM \u2713</span>');
+                        if (hasContext) badges.push('<span style="background:#e3f2fd;color:#1565c0;padding:2px 5px;border-radius:3px;border:1px solid #1565c0;">Context \u2713</span>');
+                        badgesEl.innerHTML = badges.join(' ');
                     }
 
-                    alert('Project loaded successfully!');
+                    console.log('Project loaded: ' + models.length + ' .md file(s), ' + extraFiles.length + ' BOM/context file(s) from "' + dirHandle.name + '"');
 
                 } catch (error) {
-                    // Handle cases where the user cancels the dialog or API is not supported
-                    if (error.name === 'AbortError') {
-                        console.log('User cancelled the directory selection.');
-                    } else {
+                    if (error.name !== 'AbortError') {
                         console.error('Error loading project:', error);
-                        alert(`Failed to load project: ${error.message}\n\nNote: This feature requires a modern browser that supports the File System Access API.`);
+                        alert(`Failed to load project: ${error.message}\n\nNote: This feature requires a modern browser (Chrome/Edge).`);
                     }
                 }
             },
@@ -1162,24 +1418,50 @@
             }
 
             if (hasPotentialUnresolved) {
-                if (confirm("This model appears to reference sub-models that are not open. To ensure a complete generation, please select the project's root directory.")) {
+                if (confirm("This model appears to reference sub-models that are not open. To ensure a complete generation, please select the project's root directory (the folder that contains main.md).")) {
                     try {
                         const dirHandle = await window.showDirectoryPicker();
+
+                        // Validate: the selected directory must contain main.md at its root.
+                        let hasMainMd = false;
+                        for await (const entry of dirHandle.values()) {
+                            if (entry.kind === 'file' && entry.name.toLowerCase() === 'main.md') {
+                                hasMainMd = true;
+                                break;
+                            }
+                        }
+                        if (!hasMainMd) {
+                            alert("The selected directory does not contain a 'main.md' file.\nPlease select the project's root directory (the folder that directly contains main.md), not a parent directory.");
+                            return;
+                        }
+
                         const inMemoryFiles = [];
-                        
+
                         async function processDirectory(directoryHandle, currentRelativePath) {
                             for await (const entry of directoryHandle.values()) {
                                 const newRelativePath = currentRelativePath ? `${currentRelativePath}/${entry.name}` : entry.name;
-                                if (entry.kind === 'file' && entry.name.endsWith('.md')) {
-                                    const file = await entry.getFile();
-                                    const content = await file.text();
-                                    inMemoryFiles.push({ path: newRelativePath, content: content });
+                                if (entry.kind === 'file') {
+                                    const name = entry.name.toLowerCase();
+                                    if (name.endsWith('.md')) {
+                                        const file = await entry.getFile();
+                                        const content = await file.text();
+                                        inMemoryFiles.push({ path: newRelativePath, content: content });
+                                    } else if (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json')) {
+                                        const parts = newRelativePath.split('/');
+                                        if (parts.some(p => p === 'BOM' || p === 'context')) {
+                                            const file = await entry.getFile();
+                                            TabManager.extraFiles = TabManager.extraFiles || [];
+                                            if (!TabManager.extraFiles.some(f => f.path === newRelativePath)) {
+                                                TabManager.extraFiles.push({ path: newRelativePath, content: await file.text() });
+                                            }
+                                        }
+                                    }
                                 } else if (entry.kind === 'directory') {
                                     await processDirectory(entry, newRelativePath);
                                 }
                             }
                         }
-                        
+
                         await processDirectory(dirHandle, '');
 
                         const tabFilePaths = new Set(allFiles.map(f => f.path));
@@ -1204,32 +1486,18 @@
                // Ensure `allFiles` contains all models (active tab, other tabs, and picked files).
                // The main model (active tab content) is sent as 'markdown'.
                // All other models are sent as 'submodels'.
-               const activeEditorPath = TabManager.getActiveEditor().path;
+               const activeEditorPath = TabManager.getActiveEditorData()?.path;
                const finalSubmodels = allFiles.filter(fileData => fileData.path !== activeEditorPath);
 
-               // Step 1: Resolve all sub-models recursively from the full set of project files
-               const resolveResponse = await fetch('/api/resolve_submodels', {
-                   method: 'POST',
-                   headers: { 'Content-Type': 'application/json' },
-                   body: JSON.stringify({
-                       main_model_content: mainModelContent,
-                       project_files: allFiles // Send all collected files for resolution
-                   })
-               });
 
-               if (!resolveResponse.ok) {
-                   const errorData = await resolveResponse.json();
-                   throw new Error(`Sub-model resolution failed: ${errorData.error}`);
-               }
-               // We don't need resolvedData from here to filter finalSubmodels, as finalSubmodels already contains them.
-               // The important part is that the server's resolution logic is run with all context.
 
                const generateResponse = await fetch('/api/generate_all', {
                    method: 'POST',
                    headers: { 'Content-Type': 'application/json' },
                    body: JSON.stringify({
                        markdown: mainModelContent, // Content of the active editor
-                       submodels: finalSubmodels  // All other collected models
+                       submodels: finalSubmodels,  // All other collected models
+                       extra_files: TabManager.extraFiles || []  // BOM/context files collected from directory picker
                    }),
                });
 
@@ -1323,6 +1591,7 @@
 
         // Initialize Tabs
         TabManager.init();
+        TabBar.init();
         
         // Other functions (saveProjectToServer, exportFile, etc.) would need to be updated
         // to use the active editor's content or all tabs' content as appropriate.
@@ -1404,7 +1673,82 @@
                 alert(`Export Navigator & STIX failed: ${error.message}`);
             }
         }
+        
+        async function generateAllFiles() {
+            const markdownContent = TabManager.getActiveEditor()?.getValue();
+            // Find the "Generate All" button specifically, or use a more generic way if structure changes
+            const generateAllButton = Array.from(document.querySelectorAll('.menu-bar .menu-button')).find(btn => btn.textContent.includes('Generate All'));
+            
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
 
+            if (generateAllButton) {
+                generateAllButton.disabled = true;
+            }
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+
+            // SSE Progress Listener
+            const progressSource = new EventSource('/api/progress_stream');
+            progressSource.addEventListener('progress', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    progressBar.style.width = data.percent + '%';
+                    progressBar.textContent = `${data.percent}% - ${data.message}`;
+                    console.log('Progress:', data);
+                } catch (e) {
+                    console.error('Error parsing progress data:', e);
+                }
+            });
+
+            try {
+                const { mainModelContent, mainModelPath, submodels } = TabManager.getAllData();
+                const response = await fetch('/api/generate_all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        markdown: mainModelContent,
+                        path: mainModelPath,
+                        submodels: submodels,
+                        extra_files: TabManager.extraFiles || []
+                    }),
+                });
+
+                if (!response.ok) {
+                    let errorMsg = `HTTP ${response.status}`;
+                    const ct = response.headers.get('content-type') || '';
+                    if (ct.includes('application/json')) {
+                        try { errorMsg = (await response.json()).error || errorMsg; } catch {}
+                    } else {
+                        errorMsg = `Server error ${response.status} — check server logs (response was not JSON)`;
+                    }
+                    alert(`Generate All failed: ${errorMsg}`);
+                    return;
+                }
+                const result = await response.json();
+                if (result.success) {
+                    alert(`Success! All files generated in: ${result.generation_dir}\n\nGenerated files:\n- ${Object.keys(result.generated_files).join('\n- ')}`);
+                } else {
+                    alert(`Generate All failed: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Generate All error:', error);
+                alert('An error occurred during generation.');
+            } finally {
+                progressSource.close();
+                if (generateAllButton) {
+                    generateAllButton.disabled = false;
+                }
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                }, 1000); // Wait 1 second before hiding the progress bar
+            }
+        }
+
+        // Function to load markdown from a file
         function loadMarkdownFile(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -1445,6 +1789,227 @@
                 showErrorMessage('Only .md files are supported for drag and drop.');
             }
         }, false);
+
+       // --- Modal ---
+       const modal = document.getElementById('ai-prompt-modal');
+       const newButton = document.getElementById('new-btn');
+       const closeButton = document.querySelector('.close-button'); // X icon in header
+       const closeFooterButton = document.getElementById('close-from-footer-btn'); // New Close button in footer
+       const generateFromPromptBtn = document.getElementById('generate-from-prompt-btn');
+       const promptTextarea = document.getElementById('prompt-textarea');
+       
+       const closeModal = () => {
+           modal.style.display = 'none';
+       };
+
+       aiButton.onclick = () => {
+           modal.style.display = 'block';
+       };
+
+       newButton.onclick = () => {
+           if (confirm('Are you sure you want to start a new model? Any unsaved changes will be lost.')) {
+               const activeEditor = TabManager.getActiveEditor();
+               if (activeEditor) {
+                    activeEditor.setValue(defaultEmptyMarkdown);
+               }
+           }
+       };
+
+       // Event listeners to close the modal
+       closeButton.onclick = closeModal;
+       closeFooterButton.onclick = closeModal;
+
+       window.onclick = (event) => {
+           if (event.target == modal) {
+               closeModal();
+           }
+       };
+
+       generateFromPromptBtn.onclick = async () => {
+           const prompt = promptTextarea.value;
+           if (!prompt) {
+               alert('Please enter a prompt.');
+               return;
+           }
+
+           generateFromPromptBtn.disabled = true;
+           generateFromPromptBtn.textContent = 'Generating...';
+
+           try {
+                const activeEditor = TabManager.getActiveEditor();
+                const markdownContent = activeEditor ? activeEditor.getValue() : '';
+               const response = await fetch('/api/generate_markdown_from_prompt', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({ prompt: prompt, markdown: markdownContent }),
+               });
+
+               if (!response.ok) {
+                   const errorData = await response.json();
+                   showErrorMessage(`Error generating from prompt: ${errorData.error}`);
+               } else {
+                   const data = await response.json();
+                   const activeEditor = TabManager.getActiveEditor();
+                   if (activeEditor) {
+                       activeEditor.setValue(data.markdown_content);
+                   }
+                   modal.style.display = 'none'; // Close modal on success
+               }
+           } catch (error) {
+               showErrorMessage(`Failed to fetch from AI: ${error.message}`);
+           } finally {
+               generateFromPromptBtn.disabled = false;
+               generateFromPromptBtn.textContent = 'Generate';
+               promptTextarea.value = ''; // Clear textarea
+           }
+       };
+
+        // AI Status real-time update
+        (function() {
+            const aiButton = document.getElementById('ai-generate-btn');
+            if (!aiButton) return;
+
+            const eventSource = new EventSource('/api/ai_status_stream');
+
+            eventSource.addEventListener('ai_status', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('AI status update received:', data);
+                    
+                    // Select all buttons that should be enabled/disabled based on AI status
+                    // We look for common AI related IDs or you can add more here
+                    const aiButtons = [
+                        document.getElementById('ai-generate-btn'),
+                        document.getElementById('ai-update-btn'), // if it exists
+                        document.getElementById('generate-from-prompt-btn')
+                    ].filter(btn => btn !== null);
+
+                    aiButtons.forEach(btn => {
+                        if (data.ai_online) {
+                            btn.disabled = false;
+                            if (btn.id === 'ai-generate-btn') btn.title = 'Create/update TM with AI';
+                        } else {
+                            btn.disabled = true;
+                            if (btn.id === 'ai-generate-btn') {
+                                btn.title = 'AI server is offline';
+                                if (data.error) btn.title += `: ${data.error}`;
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.error("Failed to parse AI status event:", e);
+                }
+            });
+
+            eventSource.onerror = function(err) {
+                console.error('EventSource connection failed:', err);
+                aiButton.disabled = true;
+                aiButton.title = 'AI connection lost. Refresh to try again.';
+            };
+        })();
+
+        // --- DSL Validation (debounced) ---
+        // Tracks active CodeMirror text marks so they can be cleared on next run.
+        const _dslMarks = [];
+
+        function _clearDslMarks(editor) {
+            _dslMarks.forEach(m => { try { m.clear(); } catch(_) {} });
+            _dslMarks.length = 0;
+            if (editor) editor.clearGutter('dsl-gutter');
+        }
+
+        /**
+         * Extract quoted names from a validator error/warning string.
+         * Examples: "Duplicate name: 'Foo'" → ["Foo"]
+         *           "Dataflow 'X' references unknown element 'Y'" → ["X", "Y"]
+         */
+        function _extractNames(msg) {
+            const names = [];
+            const re = /'([^']+)'/g;
+            let m;
+            while ((m = re.exec(msg)) !== null) names.push(m[1]);
+            return names;
+        }
+
+        /**
+         * Find lines in the editor that contain `name` as a bold DSL identifier
+         * (i.e. **name**: or from=name or to=name) and return their 0-based line numbers.
+         */
+        function _findLines(editor, name) {
+            const lines = [];
+            const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Match: **Name**: or from=Name or to=Name (case-insensitive)
+            const re = new RegExp(`(\\*\\*${escaped}\\*\\*|from\\s*=\\s*"?${escaped}"?|to\\s*=\\s*"?${escaped}"?)`, 'i');
+            const count = editor.lineCount();
+            for (let i = 0; i < count; i++) {
+                if (re.test(editor.getLine(i))) lines.push(i);
+            }
+            return lines;
+        }
+
+        function validateDSL() {
+            const activeEditor = TabManager.getActiveEditor();
+            if (!activeEditor) return;
+            _clearDslMarks(activeEditor);
+            const content = activeEditor.getValue();
+            const countEl = document.getElementById('dsl-component-count');
+            const banner = document.getElementById('dsl-validation-banner');
+            if (!content || !content.trim()) {
+                if (banner) banner.style.display = 'none';
+                if (countEl) countEl.textContent = '';
+                return;
+            }
+            fetch('/api/validate_markdown', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({markdown_content: content})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!banner) return;
+
+                // — Component count badge —
+                if (countEl && data.component_count) {
+                    const c = data.component_count;
+                    countEl.textContent =
+                        `${c.boundaries}B · ${c.actors}A · ${c.servers}S · ${c.dataflows}DF`;
+                }
+
+                // — Inline squiggles —
+                const markMsg = (msgs, cssClass) => {
+                    msgs.forEach(msg => {
+                        _extractNames(msg).forEach(name => {
+                            _findLines(activeEditor, name).forEach(lineNo => {
+                                const lineText = activeEditor.getLine(lineNo);
+                                const mark = activeEditor.markText(
+                                    {line: lineNo, ch: 0},
+                                    {line: lineNo, ch: lineText.length},
+                                    {className: cssClass, title: msg}
+                                );
+                                _dslMarks.push(mark);
+                            });
+                        });
+                    });
+                };
+                markMsg(data.errors || [], 'cm-dsl-error');
+                markMsg(data.warnings || [], 'cm-dsl-warning');
+
+                // — Banner —
+                const allMessages = [
+                    ...(data.errors || []).map(e => '&#x274C; ' + e),
+                    ...(data.warnings || []).map(w => '&#x26A0;&#xFE0F; ' + w)
+                ];
+                if (allMessages.length === 0) {
+                    banner.style.display = 'none';
+                } else {
+                    banner.style.display = 'block';
+                    banner.className = 'validation-banner ' + ((data.errors && data.errors.length > 0) ? 'error' : 'warning');
+                    banner.innerHTML = allMessages.join('<br>');
+                }
+            })
+            .catch(() => { /* ignore network errors silently */ });
+        }
+
     </script>
 </body>
 </html>

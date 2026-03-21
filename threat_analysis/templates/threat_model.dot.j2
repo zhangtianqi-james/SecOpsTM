@@ -12,20 +12,19 @@ digraph ThreatModel {
   subgraph cluster_{{ boundary.safe_name }} {
     label="{{ boundary.escaped_name }}";
     "{{ boundary.hidden_node_name }}" [style=invis, width=0, height=0, label=""];
-    {% if not boundary.is_trusted %}
     fontsize=10;
-    {% endif %}
     style="{{ boundary.style_parts | join(',') }}";
     {% if boundary.is_filled %}
     fillcolor="{{ boundary.color }}";
     {% else %}
     fillcolor="none";
     {% endif %}
-    {% if not boundary.is_trusted %}
-    color=black;
+    {% if boundary.is_trusted %}
+    color="#2e7d32";
+    penwidth=2;
     {% else %}
-    color=red;
-    penwidth=3;
+    color="#c62828";
+    penwidth=2;
     {% endif %}
     {% for actor in boundary.actors %}
     "{{ actor.escaped_name }}" {{ actor.node_attrs }};
@@ -54,4 +53,51 @@ digraph ThreatModel {
   {% for dataflow in dataflows %}
   "{{ dataflow.escaped_source }}" -> "{{ dataflow.escaped_dest }}" [{{ dataflow.direction }}label="{{ dataflow.label }}"{{ dataflow.edge_attributes }}, fontsize=7, {{ dataflow.class_attribute }}];
   {% endfor %}
+
+  {% if ghost_connections %}
+  {% set incoming_ghosts = ghost_connections | selectattr("direction", "equalto", "incoming") | list %}
+  {% set outgoing_ghosts = ghost_connections | selectattr("direction", "equalto", "outgoing") | list %}
+  {% if incoming_ghosts %}
+  subgraph cluster__external_parent_in {
+    label="External connections in (parent model)";
+    style="dashed,filled";
+    fillcolor="#e8f5e9";
+    color="#66bb6a";
+    penwidth=1;
+    fontsize=9;
+    fontcolor="#2e7d32";
+    {% set ns = namespace(seen=[]) %}
+    {% for ghost in incoming_ghosts %}
+    {% if ghost.node_id not in ns.seen %}
+    {% set ns.seen = ns.seen + [ghost.node_id] %}
+    "{{ ghost.node_id }}" [label="{{ ghost.node_label }}", shape=ellipse, style="dashed,filled", fillcolor="#c8e6c9", color="#66bb6a", fontcolor="#1b5e20", fontsize=9];
+    {% endif %}
+    {% endfor %}
+  }
+  {% for ghost in incoming_ghosts %}
+  "{{ ghost.node_id }}" -> "{{ ghost.internal_node }}" [style=dashed, color="#66bb6a", label="{{ ghost.protocol }}", fontsize=7, arrowsize=0.7];
+  {% endfor %}
+  {% endif %}
+  {% if outgoing_ghosts %}
+  subgraph cluster__external_parent_out {
+    label="External connections out (parent model)";
+    style="dashed,filled";
+    fillcolor="#fff3e0";
+    color="#ffa726";
+    penwidth=1;
+    fontsize=9;
+    fontcolor="#e65100";
+    {% set ns = namespace(seen=[]) %}
+    {% for ghost in outgoing_ghosts %}
+    {% if ghost.node_id not in ns.seen %}
+    {% set ns.seen = ns.seen + [ghost.node_id] %}
+    "{{ ghost.node_id }}" [label="{{ ghost.node_label }}", shape=ellipse, style="dashed,filled", fillcolor="#ffe0b2", color="#ffa726", fontcolor="#bf360c", fontsize=9];
+    {% endif %}
+    {% endfor %}
+  }
+  {% for ghost in outgoing_ghosts %}
+  "{{ ghost.internal_node }}" -> "{{ ghost.node_id }}" [style=dashed, color="#ffa726", label="{{ ghost.protocol }}", fontsize=7, arrowsize=0.7];
+  {% endfor %}
+  {% endif %}
+  {% endif %}
 }
