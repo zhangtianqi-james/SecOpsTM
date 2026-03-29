@@ -49,9 +49,8 @@ jobs:
   threat-model-dsl:
     name: Analyze threat model (DSL)
     runs-on: ubuntu-latest
-    # Only run this job when a model file exists
-    # Remove the `if` condition to always run
-    if: ${{ hashFiles('threat_model.md') != '' }}
+    # The on.paths filter above already limits when this workflow runs.
+    # For workflow_dispatch, all jobs will execute unconditionally.
 
     steps:
       - name: Checkout repository
@@ -79,7 +78,6 @@ jobs:
   threat-model-terraform:
     name: Analyze threat model (Terraform)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('**/*.tf') != '' }}
 
     steps:
       - name: Checkout repository
@@ -100,7 +98,6 @@ jobs:
   threat-model-gated:
     name: Analyze threat model (gated, new threats only)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('threat_model.md') != '' && hashFiles('baseline.json') != '' }}
 
     steps:
       - name: Checkout repository
@@ -121,7 +118,6 @@ jobs:
   threat-model-ansible:
     name: Analyze threat model (Ansible)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('ansible/**') != '' }}
 
     steps:
       - name: Checkout repository
