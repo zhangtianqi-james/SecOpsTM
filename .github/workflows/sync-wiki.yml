@@ -23,18 +23,27 @@ jobs:
           
       - name: Sync markdown files from docs
         run: |
-          # Create wiki directory if it doesn't exist
           mkdir -p wiki
-          
-          # Process all .md files in docs
-          find docs -name "*.md" -type f | while read file; do
-            # Get just the filename without path
+
+          # docs/index.md → Home (GitHub Wiki default landing page)
+          # Rewrite the technical_documentation/index.md link to its wiki flat name
+          sed 's|technical_documentation/index.md|technical_documentation_index.md|g' \
+            docs/index.md > wiki/Home.md
+          echo "Synced: docs/index.md -> wiki/Home.md"
+
+          # Top-level docs/*.md (skip index.md, already handled above)
+          find docs -maxdepth 1 -name "*.md" -type f ! -name "index.md" | while read file; do
             filename=$(basename "$file")
-            # Remove .md extension for wiki page name
-            wikiname="${filename%.md}"
-            
-            cp "$file" "wiki/${wikiname}.md"
-            echo "Synced: $file -> wiki/${wikiname}.md"
+            cp "$file" "wiki/${filename}"
+            echo "Synced: $file -> wiki/${filename}"
+          done
+
+          # docs/technical_documentation/*.md — prefixed to avoid collision with docs/index.md
+          find docs/technical_documentation -name "*.md" -type f | while read file; do
+            filename=$(basename "$file")
+            wikiname="technical_documentation_${filename}"
+            cp "$file" "wiki/${wikiname}"
+            echo "Synced: $file -> wiki/${wikiname}"
           done
           
       - name: Commit and push changes to wiki
